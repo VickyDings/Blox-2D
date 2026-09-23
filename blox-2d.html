@@ -2224,6 +2224,19 @@ function pgCatalog(p){
     S.rbx -= n; S.tix += n*8; purse(); saveSoon(); toast("Traded for " + (n*8) + " Tickets");
   };
 }
+/* Limited items trade at a market price that drifts day by day (the same
+   for everyone, and fixed for the whole day). A collector pays 90% of it,
+   in the item's own currency, so buying and selling on the same day always
+   loses a little: the only profit is holding through a rise. */
+function dayNumber(){ var d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000); }
+function marketPrice(it, day){
+  if (!it.lim) return it.price;
+  day = day == null ? dayNumber() : day;
+  var h = (hash("mkt:" + it.id) % 1000) / 1000 * 6.283;
+  var k = 1 + 0.22 * Math.sin(day / 6 + h) + 0.1 * Math.sin(day / 2.3 + h * 2);
+  return Math.max(1, Math.round(it.price * k));
+}
+function collectorOffer(it){ return Math.floor(marketPrice(it) * 0.9); }
 function itemCard(it){
   var c = el("div","card");
   var cv = el("canvas"); cv.width = 160; cv.height = 120; c.appendChild(cv);
@@ -2231,17 +2244,24 @@ function itemCard(it){
   c.appendChild(el("div","by", (it.lim ? '<span class="tag lim">Limited</span>' : "") +
     (it.tip ? esc(it.tip) : "by " + esc(it.by))));
   /* 1 Bolt = 10 Tickets cross-currency rate */
+  var cost     = marketPrice(it);
   var altCur   = it.cur === "rbx" ? "tix" : "rbx";
-  var altPrice = it.cur === "rbx" ? it.price * 10 : Math.ceil(it.price / 10);
+  var altPrice = it.cur === "rbx" ? cost * 10 : Math.ceil(cost / 10);
   var altLabel = it.cur === "rbx" ? (altPrice + " Tix") : (altPrice + " B$");
-  var price = it.price === 0 ? (it.season ? "Free in " + MONTHS[it.season - 1] : "Free") : (it.price + (it.cur === "rbx" ? " B$" : " Tix"));
-  c.appendChild(el("div","price", "<b>" + price + "</b>" + (it.price > 0 ? " <span style=\"color:var(--muted);font-size:10px\">or " + altLabel + "</span>" : "")));
+  var curTag   = it.cur === "rbx" ? " B$" : " Tix";
+  var price = cost === 0 ? (it.season ? "Free in " + MONTHS[it.season - 1] : "Free") : (cost + curTag);
+  c.appendChild(el("div","price", "<b>" + price + "</b>" + (cost > 0 ? " <span style=\"color:var(--muted);font-size:10px\">or " + altLabel + "</span>" : "")));
+  if (it.lim){
+    var was = marketPrice(it, dayNumber() - 1);
+    c.appendChild(el("div","muted", "<span style=\"font-size:10px\">Market today " + (cost > was ? "\u25b2" : (cost < was ? "\u25bc" : "\u25ac")) +
+      " (yesterday " + was + curTag + ") \u00b7 collectors pay " + collectorOffer(it) + curTag + "</span>"));
+  }
   var b = el("button","btn " + (owns(it.id) ? "" : "buy"), owns(it.id) ? "Owned — wear it" : "Buy with " + (it.cur === "rbx" ? "Bolts" : "Tickets"));
   b.onclick = function(){
     if (owns(it.id)) return wearIt(it);
     var bal = it.cur === "rbx" ? S.rbx : S.tix;
-    if (bal >= it.price){
-      give(it.cur, -it.price);
+    if (bal >= cost){
+      give(it.cur, -cost);
       S.owned.push(it.id); saveSoon(); toast("Bought " + it.name);
       wearIt(it); go("catalog"); return;
     }
@@ -2254,7 +2274,7 @@ function itemCard(it){
     toast("Not enough " + (it.cur === "rbx" ? "Bolts" : "Tickets") + " or " + altLabel, 2600);
   };
   c.appendChild(b);
-  if (it.price > 0 && !owns(it.id)){
+  if (cost > 0 && !owns(it.id)){
     var b2 = el("button","btn","Buy with " + (altCur === "rbx" ? "Bolts" : "Tickets") + " (" + altLabel + ")");
     b2.style.cssText = "margin-top:4px;font-size:10px;opacity:.85";
     b2.onclick = function(){
@@ -2268,13 +2288,13 @@ function itemCard(it){
     c.appendChild(b2);
   }
   if (owns(it.id) && it.lim){
-    var sell = el("button","btn","Sell to a collector");
+    var sell = el("button","btn","Sell to a collector (" + collectorOffer(it) + curTag + ")");
     sell.style.marginTop = "4px";
     sell.onclick = function(){
-      var got = Math.round(it.price * (1.1 + Math.random()*0.6));
+      var got = collectorOffer(it);
       S.owned = S.owned.filter(function(x){ return x !== it.id; });
       if (S.wear.hat === it.id){ S.wear.hat = null; if (S._preEventTheme){ setTheme(S._preEventTheme); delete S._preEventTheme; } }
-      give("rbx", got); toast("Sold for " + got + " B$"); go("catalog");
+      give(it.cur, got); toast("Sold for " + got + curTag); go("catalog");
     };
     c.appendChild(sell);
   }
@@ -3101,9 +3121,21 @@ function pgEarn(p){
   bshop.appendChild(bgrid);
   p.appendChild(bshop);
 
-  var canBonus = now() - (S.lastBonus||0) > 20*60*60*1000;
   var dst = dailyState(), dch = todaysChallenge();
-  var chalDone = dst.done;
+  p.appendChild(el("div","panel",
+    '<h2>Ways to earn</h2>' +
+    '<table class="grid"><tr><th>Do this</th><th>Tickets</th></tr>' +
+    '<tr><td>Collect the daily bonus (bigger each day of your streak)</td><td>' + STREAK_TIERS[0] + '\u2013' + STREAK_TIERS[STREAK_TIERS.length-1] + '</td></tr>' +
+    '<tr><td>Today\u2019s challenge: ' + esc(dch.text) + (dst.done ? ' <span class="tag">done</span>' : '') + '</td><td>' + CHALLENGE_REWARD + '</td></tr>' +
+    '<tr><td>Pick up a coin</td><td>2</td></tr>' +
+    '<tr><td>Knock someone out (bonus at 3 and every 5 in a row)</td><td>2 + 5/10</td></tr>' +
+    '<tr><td>Reach an obby\u2019s flag</td><td>60 + 2 per coin</td></tr>' +
+    '<tr><td>Win a brick battle round</td><td>40 + 4 per KO</td></tr>' +
+    '<tr><td>Run an errand in Happy Home or Town of Tiles</td><td>45</td></tr>' +
+    '<tr><td>Survive a disaster round / all of Natural Disaster Island</td><td>70 / 85</td></tr>' +
+    '<tr><td>Bring down every enemy spire</td><td>90</td></tr>' +
+    '<tr><td>Hold the base through every wave</td><td>100</td></tr>' +
+    '</table>'));
 
   /* exchange panel — same logic as the Catalog page, kept in sync */
   var exPanel = el("div","panel",
@@ -3317,7 +3349,23 @@ function wireObby(W){
   W.obbyMade = !!W.goal;
   return W;
 }
+/* battle maps get a few health packs, set on ledges people fight over */
 function buildWorld(rec){
+  var W = buildWorld0(rec);
+  if (W.mode === "battle" && !rec.custom) addMedkits(W, rng(rec.seed ^ 0x3ed));
+  return W;
+}
+function addMedkits(W, r){
+  var spots = W.parts.filter(function(p){
+    return p.t === "solid" && !p.bg && !p.mv && !p.hp && p.w >= 50 && p.h <= 24 && p.y < 0;
+  });
+  W.medkits = [];
+  for (var i=0; i<3 && spots.length; i++){
+    var p = spots.splice(Math.floor(r() * spots.length), 1)[0];
+    W.medkits.push({x:p.x + p.w/2, y:p.y - 16, t:0});
+  }
+}
+function buildWorld0(rec){
   var r = rng(rec.seed), pal = rec.pal;
   var W = {parts:[], spawn:{x:80, y:-200}, w:rec.length, floor:0, mode:rec.mode, rec:rec,
            goal:null, checkpoints:[], npcs:[], pickups:[], hazard:null};
@@ -4219,6 +4267,7 @@ function showGearTip(){
    ============================================================ */
 function useGear(){
   if (!G || G.me.dead) return;
+  if (G.studio && !G.testing) return;       /* editing, not playing */
   if (!gearHere()) return;
   if (G.proj.length > 40) return;
   var id = heldGear(); if (!id) return;
@@ -4305,12 +4354,18 @@ function damage(t, amt, from, force){
       pushChat(from.name + " knocked out " + (t === G.me ? "you" : t.name) + (via ? " with a " + via : ""));
       if (from === G.me){
         S.ko++; award("b_ko"); if (S.ko >= 10) award("b_ko10"); saveSoon();
+        G.streak = (G.streak || 0) + 1;
+        var bonus = G.streak === 3 ? 5 : (G.streak === 5 ? 10 : (G.streak > 5 && G.streak % 5 === 0 ? 10 : 0));
+        give("tix", 2 + bonus);
+        if (G.streak === 3) banner("Three in a row! +5 bonus Tickets");
+        else if (G.streak >= 5 && G.streak % 5 === 0) banner(G.streak + " knockouts without falling \u2014 unstoppable! +10 bonus Tickets");
         challengeEvent("kos", G.me.ko);
         checkWin();
       }
     } else pushChat(t.name + " went out on their own");
     if (t === G.me){
       S.wo++;
+      G.streak = 0;
       var climb = !G.online && G.W.obj && G.W.obj.kind === "climb";
       if (G.W.obj && G.W.obj.kind === "rounds") G.W.obj.diedOnce = true;
       $("respawnBy").textContent = climb ? "the water wins this one"
@@ -4466,6 +4521,7 @@ document.addEventListener("keydown", function(e){
     return;
   }
   if (!e.key) return;
+  if (G.studio && !G.testing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); studioUndo(); return; }
   K[e.key.toLowerCase()] = true;
   if (e.key === " " || e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
   if (e.key.toLowerCase() === "t" || e.key === "Enter" || e.key === "/"){ e.preventDefault(); openChat(); }
@@ -4478,13 +4534,26 @@ document.addEventListener("keyup", function(e){ if (e.key) K[e.key.toLowerCase()
 
 $("stage").addEventListener("mousedown", function(e){
   if (!G) return;
-  if (G.studio && !G.testing) return studioClick(e);
+  if (G.studio && !G.testing){
+    if (e.button !== 0) return;            /* right-click only swaps place/remove */
+    studioStroke(true);
+    return studioClick(e);
+  }
   useGear();
 });
 $("stage").addEventListener("touchstart", function(e){
   if (!G) return;
-  if (G.studio && !G.testing){ e.preventDefault(); studioClick(e); }
+  if (G.studio && !G.testing){ e.preventDefault(); studioStroke(true); studioClick(e); }
 }, {passive:false});
+/* hold and drag to paint (or rub out) a run of bricks */
+$("stage").addEventListener("mousemove", function(e){
+  if (G && G.studio && !G.testing && G.painting && (e.buttons & 1)) studioPaint(e);
+});
+$("stage").addEventListener("touchmove", function(e){
+  if (G && G.studio && !G.testing && G.painting){ e.preventDefault(); studioPaint(e); }
+}, {passive:false});
+window.addEventListener("mouseup", function(){ studioStroke(false); });
+window.addEventListener("touchend", function(){ studioStroke(false); });
 $("stage").addEventListener("contextmenu", function(e){
   if (G && G.studio){ e.preventDefault(); G.place.erase = !G.place.erase; buildStudioBar(); }
 });
@@ -6550,6 +6619,25 @@ function update(dt){
   if (gone) drawChat();
   for (var n3=0;n3<W.npcs.length;n3++){ if (W.npcs[n3].sayT > 0) W.npcs[n3].sayT -= dt; }
 
+  /* health packs: +35, then gone for 15 seconds */
+  if (W.medkits){
+    var takers = [m].concat(G.bots);
+    for (var mk=0; mk<W.medkits.length; mk++){
+      var kit = W.medkits[mk];
+      if (kit.t > 0){ kit.t -= dt; continue; }
+      for (var tk=0; tk<takers.length; tk++){
+        var who = takers[tk];
+        if (who.dead || who.hp >= who.maxhp) continue;
+        if (overlaps(who.x, who.y, who.w, who.h, {x:kit.x-11, y:kit.y-11, w:22, h:22})){
+          who.hp = Math.min(who.maxhp, who.hp + 35); kit.t = 15;
+          puff(kit.x, kit.y, 6, 80);
+          if (who === m){ beep(880, 0.08); beep(1320, 0.1); toast("+35 health", 1000); }
+          break;
+        }
+      }
+    }
+  }
+
   /* pickups */
   for (var k3=0;k3<W.pickups.length;k3++){
     var pk = W.pickups[k3];
@@ -6901,6 +6989,18 @@ function render(){
     g.strokeStyle = "#b8860b"; g.lineWidth = 1.5; g.stroke();
   }
 
+  /* health packs */
+  if (W.medkits){
+    for (var mk2=0; mk2<W.medkits.length; mk2++){
+      var kt = W.medkits[mk2];
+      if (kt.t > 0) continue;
+      var kb = Math.sin(G.t*2.5 + mk2)*3;
+      g.fillStyle = "#f2f2f2"; g.fillRect(kt.x - 10, kt.y - 10 + kb, 20, 20);
+      g.strokeStyle = "rgba(0,0,0,.35)"; g.lineWidth = 1; g.strokeRect(kt.x - 9.5, kt.y - 9.5 + kb, 19, 19);
+      g.fillStyle = "#c4302b"; g.fillRect(kt.x - 7, kt.y - 2 + kb, 14, 4); g.fillRect(kt.x - 2, kt.y - 7 + kb, 4, 14);
+    }
+  }
+
   /* town folk */
   for (var n2=0;n2<W.npcs.length;n2++){
     var np = W.npcs[n2];
@@ -7146,8 +7246,10 @@ function studioUpdate(dt){
   if (K["s"] || K["arrowdown"]) G.cam.ty += sp;
   if (stick.on){ G.cam.tx += stick.dx*sp; G.cam.ty += stick.dy*sp; }
   if ($("saveTag")) $("saveTag").textContent = G.saveNote || (G.dirty ? "unsaved changes…" : "saved");
-  $("hudInfo").textContent = "Studio — click to " + (G.place.erase ? "remove a brick" : ("lay a " + (G.place.bg ? "background" : "solid") + " brick")) +
-    ". Arrow keys or WASD move the view. Right-click swaps place and remove.";
+  var unb = $("studioBar").querySelector("button[title^='Undo']");
+  if (unb) unb.disabled = !(G.undo && G.undo.length);
+  $("hudInfo").textContent = "Studio — click or drag to " + (G.place.erase ? "remove bricks" : ("lay " + (G.place.bg ? "background" : "solid") + " bricks")) +
+    " · " + G.W.parts.length + "/" + STUDIO_MAX + " bricks. Arrow keys or WASD move the view. Right-click swaps place and remove. Ctrl+Z undoes.";
 }
 function screenToWorld(e){
   var cv = $("stage"), r = cv.getBoundingClientRect();
@@ -7159,39 +7261,86 @@ function cycleBrickType(p){
   else              { p.t = "kill";  p.c = "#e0491f";   beep(120,0.07); toast("Lava — kills on contact",1200); }
   G.dirty = true; G.saveT = 0;
 }
+var STUDIO_MAX = 1200;
+/* Undo keeps whole snapshots of the grid: one per click or per drag. */
+function studioSnapshot(){
+  return G.W.parts.map(function(p){ return {x:p.x, y:p.y, w:p.w, h:p.h, c:p.c, t:p.t, b:p.bg ? 1 : 0}; });
+}
+function studioRemember(){
+  if (G.strokeSaved) return;               /* one undo step per stroke, however long */
+  G.strokeSaved = true;
+  G.undo = G.undo || [];
+  G.undo.push(studioSnapshot());
+  if (G.undo.length > 60) G.undo.shift();
+}
+function studioStroke(down){
+  if (!G || !G.studio) return;
+  G.painting = !!down; G.strokeSaved = false; G.lastCell = null;
+}
+function studioUndo(){
+  if (!G || !G.studio || !G.undo || !G.undo.length){ toast("Nothing to undo", 1000); return; }
+  var snap = G.undo.pop();
+  G.W.parts = snap.map(function(p){ return part(p.x, p.y, p.w, p.h, p.c, p.t, {bg:!!p.b}); });
+  G.W.grid = null;
+  G.dirty = true; G.saveT = 0;
+  beep(300, 0.05); toast("Undone", 900);
+  buildStudioBar();
+}
+function studioCell(w){
+  return {x:Math.round((w.x - G.place.w/2)/20)*20, y:Math.round((w.y - G.place.h/2)/20)*20};
+}
+function studioPlaceAt(w, t, col){
+  var c = studioCell(w), bg = !!G.place.bg;
+  /* never stack an identical brick on top of itself */
+  for (var i=0;i<G.W.parts.length;i++){
+    var q = G.W.parts[i];
+    if (q.x === c.x && q.y === c.y && q.w === G.place.w && q.h === G.place.h && !!q.bg === bg) return false;
+  }
+  if (G.W.parts.length >= STUDIO_MAX){ toast("That is the " + STUDIO_MAX + "-brick limit for one place", 2200); return false; }
+  studioRemember();
+  G.W.parts.push(part(c.x, c.y, G.place.w, G.place.h, col, t, {bg:bg}));
+  G.dirty = true; G.saveT = 0;
+  S.bricks++; if (S.bricks >= 25) award("b_builder");
+  saveSoon();
+  return true;
+}
+function studioEraseAt(w){
+  var pass, i, p;
+  for (pass=0; pass<2; pass++){
+    for (i=G.W.parts.length-1;i>=0;i--){
+      p = G.W.parts[i];
+      if (pass === 0 ? !!p.bg : !p.bg) continue;
+      if (w.x >= p.x && w.x <= p.x+p.w && w.y >= p.y && w.y <= p.y+p.h){
+        studioRemember();
+        G.W.parts.splice(i,1); G.dirty = true; G.saveT = 0; return true;
+      }
+    }
+  }
+  return false;
+}
 function studioClick(e){
   var w = screenToWorld(e);
+  G.lastCell = studioCell(w);
   if (G.place.killToggle || e.shiftKey){
     for (var k=G.W.parts.length-1;k>=0;k--){
       var pk=G.W.parts[k];
       if (pk.bg!==!!G.place.bg) continue;
-      if (w.x>=pk.x&&w.x<=pk.x+pk.w&&w.y>=pk.y&&w.y<=pk.y+pk.h){ cycleBrickType(pk); return; }
+      if (w.x>=pk.x&&w.x<=pk.x+pk.w&&w.y>=pk.y&&w.y<=pk.y+pk.h){ studioRemember(); cycleBrickType(pk); return; }
     }
-    if (G.place.killToggle){
-      var gk=Math.round((w.x-G.place.w/2)/20)*20, yk=Math.round((w.y-G.place.h/2)/20)*20;
-      G.W.parts.push(part(gk,yk,G.place.w,G.place.h,"#e0491f","kill",{bg:!!G.place.bg}));
-      G.dirty=true; G.saveT=0; S.bricks++; saveSoon(); beep(120,0.07); toast("Lava brick placed",1000);
-    }
+    if (G.place.killToggle && studioPlaceAt(w, "kill", "#e0491f")){ beep(120,0.07); toast("Lava brick placed",1000); }
     return;
   }
-  if (G.place.erase){
-    var pass, i, p;
-    for (pass=0; pass<2; pass++){
-      for (i=G.W.parts.length-1;i>=0;i--){
-        p = G.W.parts[i];
-        if (pass === 0 ? !!p.bg : !p.bg) continue;
-        if (w.x >= p.x && w.x <= p.x+p.w && w.y >= p.y && w.y <= p.y+p.h){
-          G.W.parts.splice(i,1); G.dirty = true; G.saveT = 0; beep(200,0.05); return;
-        }
-      }
-    }
-    return;
-  }
-  var gx = Math.round((w.x - G.place.w/2)/20)*20, gy = Math.round((w.y - G.place.h/2)/20)*20;
-  G.W.parts.push(part(gx, gy, G.place.w, G.place.h, G.place.col, G.place.t, {bg:!!G.place.bg}));
-  G.dirty = true; G.saveT = 0;
-  S.bricks++; if (S.bricks >= 25) award("b_builder");
-  saveSoon(); beep(500, 0.04);
+  if (G.place.erase){ if (studioEraseAt(w)) beep(200,0.05); return; }
+  if (studioPlaceAt(w, G.place.t, G.place.col)) beep(500, 0.04);
+}
+/* dragging: act once per new grid cell the pointer enters */
+function studioPaint(e){
+  if (G.place.killToggle || e.shiftKey) return;     /* flipping lava is one brick at a time */
+  var w = screenToWorld(e), c = studioCell(w);
+  if (G.lastCell && G.lastCell.x === c.x && G.lastCell.y === c.y) return;
+  G.lastCell = c;
+  if (G.place.erase){ if (studioEraseAt(w)) beep(200, 0.03); }
+  else if (studioPlaceAt(w, G.place.t, G.place.col)) beep(520, 0.02);
 }
 function studioOverlay(g, vw, vh, camx, camy){
   g.save(); g.translate(-camx, -camy);
@@ -7271,11 +7420,19 @@ function buildStudioBar(){
   var pub = el("button","btn go","Save now");
   pub.onclick = publishPlace;
   bar.appendChild(pub);
+  var un = el("button","btn","\u21b6 Undo");
+  un.title = "Undo the last click or drag (Ctrl+Z)";
+  un.disabled = !(G.undo && G.undo.length);
+  un.onclick = studioUndo;
+  bar.appendChild(un);
   var clr = el("button","btn","Clear");
   clr.onclick = function(){
+    G.strokeSaved = false; studioRemember();
     G.W.parts = [part(-100, 0, 2400, 460, "#c9d2dc", "solid"), part(120, -24, 60, 24, "#7bd06f", "spawn")];
+    G.W.grid = null;
     G.dirty = true; G.saveT = 0;
-    toast("Cleared back to the baseplate");
+    toast("Cleared back to the baseplate \u2014 Undo brings it back");
+    buildStudioBar();
   };
   bar.appendChild(clr);
   var ex = el("button","btn danger","Exit");
@@ -7294,8 +7451,8 @@ function autoSaveStudio(loud){
     if (p.bg) o.b = 1;
     return o;
   });
-  if (parts.length > 1200){
-    G.saveNote = "too many bricks to save — trim it under 1200";
+  if (parts.length > STUDIO_MAX){
+    G.saveNote = "too many bricks to save — trim it under " + STUDIO_MAX;
     if (loud) toast(G.saveNote, 3200);
     return false;
   }
@@ -7383,8 +7540,8 @@ function pgStudio(p){
   var tut = el("div","panel", '<h2>📖 How to use Studio</h2>');
   var steps = [
     ['1. Open Studio', 'Hit <b>Open Studio</b> above. A blank place loads with a grey floor and a green spawn point already placed. That green brick is where your character starts — don\'t delete it or you\'ll fall forever.'],
-    ['2. Place bricks', 'Click (or tap) anywhere on the canvas to stamp a brick. It goes down in whatever colour, size and type is selected in the toolbar at the top, snapped to a 20-pixel grid.'],
-    ['3. Remove bricks', 'Right-click, or press the <b>Placing</b> button in the toolbar so it reads <b>Removing</b>. Now a click deletes the brick under it. Press the button again to go back to placing.'],
+    ['2. Place bricks', 'Click (or tap) anywhere on the canvas to stamp a brick. It goes down in whatever colour, size and type is selected in the toolbar at the top, snapped to a 20-pixel grid. Hold the button and drag to lay a whole row at once.'],
+    ['3. Remove bricks', 'Right-click, or press the <b>Placing</b> button in the toolbar so it reads <b>Removing</b>. Now a click (or a drag) deletes the bricks under it. Press the button again to go back to placing. Made a mistake? <b>↶ Undo</b> or Ctrl+Z steps back one click or drag at a time.'],
     ['4. Pick a brick type', 'The type menu in the toolbar decides what a brick does:<br>' +
       '<ul style="margin:.4em 0 0 1em">' +
       '<li><b>Normal</b> — a solid brick. Blocks movement.</li>' +
