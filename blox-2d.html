@@ -405,7 +405,7 @@ noscript .nojs{max-width:640px;margin:60px auto;background:#fff;border:1px solid
    BLOX 2D — a flat remake of the classic era.
    One file. Site + engine + studio.
    ============================================================ */
-var BLOX_VERSION = "7.5";
+var BLOX_VERSION = "7.6";
 var G3D = false;
 
 
@@ -3177,8 +3177,29 @@ function pgEarn(p){
   };
 
 }
+/* what changed, newest first — shown at the top of the Roadmap page */
+var CHANGES = [
+  {v:"7.6", items:[
+    "New place: Frostbite Peak \u2014 a snowy obby with ice shelves, drifting floes, icicles and a trampoline cliff",
+    "Five new hats, four new emotes (cheer, shrug, salute, flex), six new badges and four new themes",
+    "More daily challenges, including a race against the clock",
+    "Studio: drag to lay or erase a row of bricks, and Undo (Ctrl+Z)",
+    "Battles: health packs on every battle map, and Tickets for knockout streaks",
+    "Limited items now follow a daily market price; the Earn tab lists every way to earn",
+    "Party Chat works, and follows parental controls and the chat filter",
+    "Joining a place by code works on every connection, and the guest now gets the host's place",
+    "Fixed: face maker, obby times of 0.0s, accounts made from the home page, raiders ignoring the core, keys sticking, and more",
+    "Removed the pretend card-payment form \u2014 nothing in the game asks for a card"
+  ]}
+];
 function pgManifesto(p){
   p.appendChild(el("div",null,"<h1>Roadmap</h1><p class='muted'>Where Blox 2D is headed — and how to support it.</p>"));
+  CHANGES.forEach(function(ch){
+    var box = el("div","panel","<h2>What\u2019s new in v" + esc(ch.v) + "</h2>");
+    var ul = el("ul"); ul.style.cssText = "margin:0;padding-left:18px;line-height:1.7";
+    ch.items.forEach(function(t){ var li = document.createElement("li"); li.textContent = t; ul.appendChild(li); });
+    box.appendChild(ul); p.appendChild(box);
+  });
 
   /* Phase cards */
   var phases = [
@@ -3188,7 +3209,7 @@ function pgManifesto(p){
       sub:"In progress",
       col:"#2f7d32",
       items:[
-        "Fix bugs and spawning issues",
+        "Fix bugs and spawning issues ✅ (v7.6)",
         "Mobile and desktop testing",
         "Deploy to Netlify with a real URL",
         "Studio tutorial page ✅",
@@ -3202,7 +3223,7 @@ function pgManifesto(p){
       sub:"Coming soon",
       col:"#c4302b",
       items:[
-        "Ko-fi support button in the game",
+        "Ko-fi support button in the game ✅",
         "Players tip to support development",
         "Real PayPal checkout when available",
         "Revenue goes into future updates"
@@ -3239,7 +3260,7 @@ function pgManifesto(p){
       sub:"Ongoing",
       col:"#f7d117",
       items:[
-        "More maps and game modes",
+        "More maps and game modes (Frostbite Peak ✅)",
         "Christmas, Summer and new seasonal events",
         "Online leaderboards",
         "More gear — grappling hook? shield? snowball?",
@@ -7708,7 +7729,7 @@ document.getElementById('installBtn').onclick = function() {
 
 if ('serviceWorker' in navigator) {
   try {
-    var _swCode = "\nconst CACHE = 'blox2d-v6.8';\nconst ME = self.location.href;\n\nself.addEventListener('install', e => {\n  e.waitUntil(\n    caches.open(CACHE).then(c => c.add(ME)).then(() => self.skipWaiting())\n  );\n});\n\nself.addEventListener('activate', e => {\n  e.waitUntil(\n    caches.keys().then(keys =>\n      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))\n    ).then(() => self.clients.claim())\n  );\n});\n\nself.addEventListener('fetch', e => {\n  /* only handle same-origin navigations (the page itself) */\n  if (e.request.mode === 'navigate') {\n    e.respondWith(\n      fetch(e.request).catch(() => caches.match(ME))\n    );\n  }\n});\n";
+    var _swCode = "\nconst CACHE = 'blox2d-v7.6';\nconst ME = self.location.href;\n\nself.addEventListener('install', e => {\n  e.waitUntil(\n    caches.open(CACHE).then(c => c.add(ME)).then(() => self.skipWaiting())\n  );\n});\n\nself.addEventListener('activate', e => {\n  e.waitUntil(\n    caches.keys().then(keys =>\n      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))\n    ).then(() => self.clients.claim())\n  );\n});\n\nself.addEventListener('fetch', e => {\n  /* only handle same-origin navigations (the page itself) */\n  if (e.request.mode === 'navigate') {\n    e.respondWith(\n      fetch(e.request).catch(() => caches.match(ME))\n    );\n  }\n});\n";
     var _swBlob = new Blob([_swCode], { type: 'application/javascript' });
     var _swUrl  = URL.createObjectURL(_swBlob);
     navigator.serviceWorker.register(_swUrl, { scope: './' })
