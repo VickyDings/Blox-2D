@@ -26,6 +26,7 @@
   --page:#e9edf1; --pageBorder:#7d8b99;
   --panel:#ffffff; --panelBorder:#a8b4c0; --text:#16191d; --muted:#5b636d; --heading:#22456f; --link:#1f4d84; --rule:#c4302b;
   --btn:#dfe4ea; --btnText:#16191d; --go:#2f7d32; --goText:#ffffff; --buy:#b8860b; --buyText:#3a2a02; --danger:#c4302b; --dangerText:#ffffff;
+  --border:var(--panelBorder); --accent:var(--link);
   --font:Verdana,Geneva,Tahoma,sans-serif; --hfont:"Trebuchet MS",Verdana,sans-serif; --radius:0px;
 }
 *{box-sizing:border-box}
@@ -846,7 +847,7 @@ var BADGES = [
   {id:"b_streak",  name:"Regular",          how:"Collect the daily bonus seven days in a row."},
   {id:"b_daily",   name:"Challenger",       how:"Complete a daily challenge."},
   {id:"b_pl_four-corners",             name:"Corner Champion",   how:"Win a round in Four Corners."},
-  {id:"b_pl_happy-home-on-the-hill",   name:"Homebody",          how:"Reach the flag in Happy Home on the Hill."},
+  {id:"b_pl_happy-home-on-the-hill",   name:"Homebody",          how:"Bring BrickLady her five coins in Happy Home on the Hill."},
   {id:"b_pl_rocket-arena",             name:"Rocketeer",         how:"Win a round in Rocket Arena."},
   {id:"b_pl_escape-the-lava-temple",   how:"Reach the flag in Escape the Lava Temple.", name:"Temple Runner"},
   {id:"b_pl_natural-disaster-island",  name:"Storm Proof",       how:"Survive every disaster on Natural Disaster Island."},
@@ -856,7 +857,7 @@ var BADGES = [
   {id:"b_pl_town-of-tiles",            name:"Errand Runner",     how:"Finish the errand in Town of Tiles."},
   {id:"b_pl_spirefall-brickbattle",    name:"Spire Breaker",     how:"Bring down every enemy spire in Spirefall Brickbattle."},
   {id:"b_pl_the-rising-water",         name:"High and Dry",      how:"Reach the top of The Rising Water."},
-  {id:"b_tour",    name:"Grand Tour",       how:"Earn the badge of every one of the eleven places."},
+  {id:"b_tour",    name:"Grand Tour",       how:"Earn the badge of every place on the Games page."},
   {id:"b_survive", name:"Survivor",         how:"Live through a whole disaster round."},
   {id:"b_rich",    name:"Ticket Collector", how:"Hold 500 Tickets at once."},
   {id:"b_publish", name:"Published",        how:"Publish a place from Studio."}
@@ -1305,10 +1306,10 @@ function pickBotReply(text, mode, safe, r){
   r = r == null ? Math.random() : r;
   if (safe){
     /* under safe chat the bots keep to the same menu as everyone else */
-    var greetish = /hi|hello|hey|hiya/i.test(text);
+    var greetish = /\b(hi|hello|hey|hiya)\b/i.test(text);
     var pool = [];
     SAFE_CHAT.forEach(function(gp){
-      if (greetish ? gp.name === "Hello" : gp.name !== "Hello") pool = pool.concat(gp.lines);
+      if (greetish ? gp.cat === "Hello" : gp.cat !== "Hello") pool = pool.concat(gp.lines);
     });
     if (!pool.length) pool = SAFE_CHAT[0].lines;
     return pool[Math.floor(r * pool.length) % pool.length];
@@ -1834,7 +1835,8 @@ function go(r){
       '<p class="muted">The page hit a problem and could not finish loading. ' +
       'Everything else is fine — try a different tab, or reload if this keeps happening.</p>' +
       '<p style="font-size:10px;color:var(--muted)">[v' + BLOX_VERSION + '] ' + msg + '</p>' +
-      '<button class="btn go" onclick="go("home")">Go home</button></div>';
+      '<button class="btn go" id="goHomeBtn">Go home</button></div>';
+    var gh = $("goHomeBtn"); if (gh) gh.onclick = function(){ go("home"); };
     /* also log it properly for debugging */
     if (window.console && console.error) console.error("go(" + r + ") threw:", e);
   }
@@ -1873,7 +1875,7 @@ function pgHome(p){
     '<p class="' + (dst.done ? "thGood" : "muted") + '">' + (dst.done ? "Done for today. A new one arrives tomorrow." : "Do it in any game today and the Tickets are paid on the spot.") + '</p>'));
   left.appendChild(el("div","panel",
     '<h2>Jump straight in</h2>' +
-    '<p class="muted">Four of the twelve places, picked at random. Everything is single player against bots — nobody else has to be online for the world to be full.</p>' +
+    '<p class="muted">Four of the ' + GAMES.length + ' places, picked at random. Everything is single player against bots — nobody else has to be online for the world to be full.</p>' +
     '<div class="cards" id="homeGames"></div>'));
   top.appendChild(left);
 
@@ -1921,7 +1923,7 @@ function pgHome(p){
   $("toChar").onclick = function(){ go("character"); };
   if ($("toPC")) $("toPC").onclick = function(){ go("parental"); };
   $("testSave").onclick = function(){
-    Store.save("blox2d:state", S).then(function(r){
+    Store.save(stateKey(), S).then(function(r){
       $("saveNote").textContent = r.ok ? ("Saved " + r.kb + " KB and read it straight back.")
                                        : ("Did not save — " + r.why + ".");
     });
@@ -1936,7 +1938,18 @@ function pgHome(p){
   if (S.guest) $("nameBtn").onclick = function(){
     var v = ($("nameIn").value || "").trim();
     if (!v) return;
-    S.name = v.slice(0,20); S.guest = false; award("b_welcome"); purse(); saveSoon(); go("home");
+    var why = nameProblem(v);
+    if (why) return toast(why, 2600);
+    /* a real account slot, so the name survives a reload instead of
+       snapping back to Guest; the guest slot is emptied so the progress
+       moves rather than being copied */
+    var was = ACC, acc = accountFor(cleanName(v), true);
+    ACCOUNTS.list.push(acc); ACCOUNTS.last = acc.slug; saveAccounts();
+    ACC = acc; S.name = acc.name; S.guest = false;
+    award("b_welcome");
+    Store.save(acc.key, S); savePlaces();
+    if (was && was.guest){ Store.save(was.key, freshState()); Store.save(was.pkey, freshPlaces()); }
+    purse(); toast("Account made \u2014 welcome, " + acc.name); go("home");
   };
 }
 
@@ -1997,7 +2010,7 @@ function pgGames(p){
   }
   p.appendChild(sw);
   p.appendChild(el("div","panel",
-    '<h2>Twelve places</h2><p class="muted">Every one is a real level built out of bricks. ' +
+    '<h2>' + GAMES.length + ' places</h2><p class="muted">Every one is a real level built out of bricks. ' +
     'The name decides the palette, the length, the weather and how many bots turn up, so no two feel the same.</p>' +
     '<div class="cards" id="gameList"></div>'));
   var host = $("gameList");
@@ -2152,7 +2165,7 @@ function pgCatalog(p){
   });
 
   $("exToR").onclick = function(){
-    var n = Math.max(10, parseInt($("exTix").value,10) || 0);
+    var n = Math.max(10, Math.floor((parseInt($("exTix").value,10) || 0) / 10) * 10);   /* whole tens only */
     if (S.tix < n) return toast("Not enough Tickets");
     S.tix -= n; S.rbx += Math.floor(n/10); purse(); saveSoon(); toast("Traded for " + Math.floor(n/10) + " B$");
   };
@@ -2289,6 +2302,12 @@ function drawGearIcon(g, id, cx, cy){
     g.fillStyle="#26292e"; g.fillRect(-30,-16,60,32);
     g.fillStyle="#c9d2dc"; g.beginPath(); g.arc(-14,2,8,0,7); g.fill(); g.beginPath(); g.arc(14,2,8,0,7); g.fill();
     g.fillStyle="#7bd06f"; g.fillRect(-8,-12,16,5);
+  } else if (id === "g_jetpack"){
+    g.fillStyle="#3a3f45"; g.fillRect(-22,-26,18,44); g.fillRect(4,-26,18,44);
+    g.fillStyle="#c9d2dc"; g.fillRect(-4,-18,8,24); g.fillRect(-20,-22,14,6); g.fillRect(6,-22,14,6);
+    g.fillStyle="#e0491f"; g.fillRect(-19,18,12,8); g.fillRect(7,18,12,8);
+    g.fillStyle="#ffd34d"; g.beginPath(); g.moveTo(-17,26); g.lineTo(-9,26); g.lineTo(-13,38); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(9,26); g.lineTo(17,26); g.lineTo(13,38); g.closePath(); g.fill();
   }
   g.restore();
 }
@@ -2426,7 +2445,7 @@ function pgCharacter(p){
     (S.faces.length ? '<h3>Your faces</h3><div class="partpick" id="cfList"></div>' : ""));
   p.appendChild(fmk);
 
-  var ffpending = null;
+  var fpending = null;
   $("cfFile").onchange = function(){
     fpending = null; $("cfMake").disabled = true; $("cfPrev").innerHTML = "";
     var f = this.files && this.files[0];
@@ -2746,31 +2765,50 @@ function pgGroups(p){
 
 
 /* ---------- party chat ---------- */
-var Party = { conn:null, code:null, status:"offline" };
+/* Its own socket, separate from any game room, so joining a game never
+   drops the party and leaving one never closes it. Parental controls
+   apply here exactly as they do in a game. */
+var Party = { conn:null, code:null, status:"offline", ticket:0 };
 
 function partyRoomId(code){
   return "party-" + code.toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,24);
 }
+function partyBlocked(){
+  if (!allowOnline()) return "Online play is switched off in parental controls";
+  if (chatMode() === "off") return "Chat is switched off in parental controls";
+  return null;
+}
+function partyLogPush(entry){
+  S.partyLog = S.partyLog || [];
+  S.partyLog.push(entry);
+  if (S.partyLog.length > 200) S.partyLog = S.partyLog.slice(-200);
+  saveSoon();
+}
 
 function partyJoin(code, onmsg, ondone){
-  if (Party.conn){ try{ Party.conn.close(); }catch(e){} Party.conn = null; }
+  partyLeave();
+  var why = partyBlocked();
+  if (why){ if (ondone) ondone(false, why); return; }
+  if (!partyRoomId(code).replace("party-", "")){ if (ondone) ondone(false, "Use letters or numbers in the code"); return; }
   Party.code = code; Party.status = "connecting";
-  var rid = partyRoomId(code);
-  netJoin(rid, function(ok, conn){
-    if (!ok){ Party.status = "offline"; if (ondone) ondone(false); return; }
+  var ticket = ++Party.ticket;
+  netConnect(partyRoomId(code), function(ok, conn){
+    if (ticket !== Party.ticket){ if (ok){ try { conn.close(); } catch(e){} } return; }   /* left or rejoined meanwhile */
+    if (!ok){ Party.status = "offline"; if (ondone) ondone(false, String(conn || "could not connect")); return; }
     Party.conn = conn; Party.status = "online";
-    conn.onMsg(function(d){
-      try {
-        var m = JSON.parse(d);
-        if (m.t === "pm"){
-          var entry = {by:m.by, text:m.text, ts:Date.now()};
-          S.partyLog = (S.partyLog || []);
-          S.partyLog.push(entry);
-          if (S.partyLog.length > 200) S.partyLog = S.partyLog.slice(-200);
-          saveSoon();
-          if (onmsg) onmsg(entry);
-        }
-      } catch(e){}
+    conn.onMsg(function(m, peer){
+      if (!m || typeof m !== "object" || m.t !== "pm" || typeof m.text !== "string" || !m.text) return;
+      if (partyBlocked()) return;
+      var from = String(m.from || peer || "someone").slice(0, 80);
+      if (!peerAllowed("party:" + from)) return;
+      var book = peerBook("party:" + from);
+      if (now() - book.chat < PEER_LIMITS.chatGap * 1000) return;       /* nobody floods the party */
+      book.chat = now();
+      var text = filterChat(m.text.slice(0, 300));
+      if (chatMode() === "safe" && !isSafeLine(text)) return;           /* off the menu never appears */
+      var entry = {by:displayName("party:" + from, cleanName(typeof m.by === "string" ? stripTag(m.by) : "") || "Someone"), text:text, ts:Date.now()};
+      partyLogPush(entry);
+      if (onmsg) onmsg(entry);
     });
     if (ondone) ondone(true);
   });
@@ -2778,33 +2816,36 @@ function partyJoin(code, onmsg, ondone){
 
 function partySend(text){
   if (!Party.conn || Party.status !== "online") return false;
-  var msg = JSON.stringify({t:"pm", by:S.name, text:filterChat(text.slice(0,300))});
-  Party.conn.send(msg);
-  /* also add to own log */
-  var entry = {by:S.name, text:filterChat(text.slice(0,300)), ts:Date.now(), me:true};
-  S.partyLog = S.partyLog || [];
-  S.partyLog.push(entry);
-  if (S.partyLog.length > 200) S.partyLog = S.partyLog.slice(-200);
-  saveSoon();
+  if (partyBlocked()) return false;
+  text = filterChat(String(text).slice(0, 300));
+  if (chatMode() === "safe" && !isSafeLine(text)) return false;
+  Party.conn.send({t:"pm", by:S.name, text:text});
+  partyLogPush({by:S.name, text:text, ts:Date.now(), me:true});
   return true;
 }
 
 function partyLeave(){
+  Party.ticket++;
   if (Party.conn){ try{ Party.conn.close(); }catch(e){} Party.conn = null; }
   Party.code = null; Party.status = "offline";
 }
 
 
-/* ---------- party chat ---------- */
 function pgParty(p){
   p.appendChild(el("div", null, "<h1>Party Chat</h1>"));
+  var blocked = partyBlocked();
+  if (blocked){
+    if (Party.conn) partyLeave();
+    p.appendChild(el("div","panel","<h2>Switched off</h2><div class='lock'>" + esc(blocked) + ". Party Chat needs both.</div>"));
+    return;
+  }
 
   /* ---- code setup panel ---- */
   var setupPanel = el("div","panel","");
   var codeVal = S.partyCode || "";
   setupPanel.innerHTML =
     "<h2>Your party code</h2>" +
-    "<p class='muted'>Share this code with friends. Anyone who enters it can chat with you here, even without being in a game.</p>" +
+    "<p class='muted'>Pick a code and share it with friends. Setting it opens that room straight away, and anyone who types the same code chats with you here, even without being in a game.</p>" +
     "<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>" +
       "<input id='partyCodeIn' type='text' maxlength='20' placeholder='e.g. pizza123' " +
         "style='flex:1;min-width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px' " +
@@ -2814,20 +2855,6 @@ function pgParty(p){
     "</div>" +
     (codeVal ? "<p style='margin:8px 0 0;font-size:12px'>Current code: <b>" + esc(codeVal) + "</b></p>" : "");
   p.appendChild(setupPanel);
-
-  /* set code */
-  document.getElementById("partySetBtn").onclick = function(){
-    var v = (document.getElementById("partyCodeIn").value || "").trim();
-    if (!v){ toast("Enter a code first"); return; }
-    S.partyCode = v; saveSoon();
-    toast("Party code set to: " + v);
-    go("party");
-  };
-  if (document.getElementById("partyClearBtn")){
-    document.getElementById("partyClearBtn").onclick = function(){
-      S.partyCode = null; saveSoon(); partyLeave(); go("party");
-    };
-  }
 
   /* ---- join panel ---- */
   var joinPanel = el("div","panel","");
@@ -2839,7 +2866,7 @@ function pgParty(p){
         "style='flex:1;min-width:120px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px'" +
         (Party.code ? " value='" + esc(Party.code) + "'" : "") + ">" +
       "<button id='partyJoinBtn' class='btn go'>" + (Party.status === "online" ? "Rejoin" : "Join") + "</button>" +
-      (Party.status === "online" ? "<button id='partyLeaveBtn' class='btn'>Leave</button>" : "") +
+      (Party.status !== "offline" ? "<button id='partyLeaveBtn' class='btn'>Leave</button>" : "") +
     "</div>" +
     "<p id='partyStatus' style='margin:8px 0 0;font-size:12px;color:var(--muted)'>" +
       (Party.status === "online" ? "✅ Connected to <b>" + esc(Party.code) + "</b>" :
@@ -2847,19 +2874,35 @@ function pgParty(p){
     "</p>";
   p.appendChild(joinPanel);
 
-  document.getElementById("partyJoinBtn").onclick = function(){
-    var v = (document.getElementById("partyJoinIn").value || "").trim();
-    if (!v){ toast("Enter a party code"); return; }
-    document.getElementById("partyStatus").innerHTML = "⏳ Connecting...";
-    partyJoin(v, function(entry){ renderMsg(entry); }, function(ok){
-      var st = document.getElementById("partyStatus");
-      if (st) st.innerHTML = ok ? "✅ Connected to <b>" + esc(v) + "</b>" : "❌ Could not connect — check your relay settings in Account tab";
-      renderAllMsgs();
+  function join(v){
+    $("partyStatus").innerHTML = "⏳ Connecting...";
+    partyJoin(v, function(entry){ renderMsg(entry); }, function(ok, why){
+      if (route !== "party") return;
+      if (ok) return go("party");                  /* redraw with the chat box switched on */
+      var st = $("partyStatus");
+      if (st) st.innerHTML = "❌ Could not connect — " + esc(why || "check your relay settings in the Account tab");
     });
+  }
+  $("partySetBtn").onclick = function(){
+    var v = ($("partyCodeIn").value || "").trim();
+    if (!v){ toast("Enter a code first"); return; }
+    S.partyCode = v; saveSoon();
+    toast("Party code set to: " + v);
+    $("partyJoinIn").value = v;
+    join(v);
   };
-
-  if (document.getElementById("partyLeaveBtn")){
-    document.getElementById("partyLeaveBtn").onclick = function(){ partyLeave(); go("party"); };
+  if ($("partyClearBtn")){
+    $("partyClearBtn").onclick = function(){
+      S.partyCode = null; saveSoon(); partyLeave(); go("party");
+    };
+  }
+  $("partyJoinBtn").onclick = function(){
+    var v = ($("partyJoinIn").value || "").trim();
+    if (!v){ toast("Enter a party code"); return; }
+    join(v);
+  };
+  if ($("partyLeaveBtn")){
+    $("partyLeaveBtn").onclick = function(){ partyLeave(); go("party"); };
   }
 
   /* ---- chat log ---- */
@@ -2868,152 +2911,88 @@ function pgParty(p){
   log.id = "partyLog";
   log.style.cssText = "max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px";
   chatPanel.appendChild(log);
+  var online = Party.status === "online";
 
-  /* input row */
-  var row = el("div");
-  row.style.cssText = "display:flex;gap:8px";
-  var inp = document.createElement("input");
-  inp.id = "partyChatIn"; inp.type = "text"; inp.maxLength = 300;
-  inp.placeholder = Party.status === "online" ? "Say something..." : "Join a party first";
-  inp.disabled = Party.status !== "online";
-  inp.style.cssText = "flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px";
-  var sendBtn = el("button","btn go","Send");
-  sendBtn.disabled = Party.status !== "online";
-  row.appendChild(inp); row.appendChild(sendBtn);
-  chatPanel.appendChild(row);
+  if (chatMode() === "safe"){
+    /* safe chat: the same fixed menu the games use, and nothing else */
+    var menu = el("div","partpick");
+    SAFE_CHAT.forEach(function(gp){
+      gp.lines.forEach(function(line){
+        var b = el("button","btn", esc(line));
+        b.disabled = !online;
+        b.onclick = function(){ if (!partySend(line)) return toast("Not connected to a party"); renderAllMsgs(); };
+        menu.appendChild(b);
+      });
+    });
+    chatPanel.appendChild(el("p","muted", online ? "Safe chat is on — pick a phrase." : "Join a party first."));
+    chatPanel.appendChild(menu);
+  } else {
+    var row = el("div");
+    row.style.cssText = "display:flex;gap:8px";
+    var inp = document.createElement("input");
+    inp.id = "partyChatIn"; inp.type = "text"; inp.maxLength = 300;
+    inp.placeholder = online ? "Say something..." : "Join a party first";
+    inp.disabled = !online;
+    inp.style.cssText = "flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px";
+    var sendBtn = el("button","btn go","Send");
+    sendBtn.disabled = !online;
+    row.appendChild(inp); row.appendChild(sendBtn);
+    chatPanel.appendChild(row);
+    var doSend = function(){
+      var v = inp.value.trim();
+      if (!v) return;
+      if (!partySend(v)){ toast("Not connected to a party"); return; }
+      inp.value = "";
+      renderAllMsgs();
+    };
+    sendBtn.onclick = doSend;
+    inp.onkeydown = function(e){ if (e.key === "Enter") doSend(); };
+  }
   p.appendChild(chatPanel);
 
   function renderMsg(entry){
+    var logEl = $("partyLog");
+    if (!logEl) return;
+    var empty = logEl.querySelector(".partyEmpty"); if (empty) logEl.removeChild(empty);
     var bubble = document.createElement("div");
     bubble.style.cssText = "padding:6px 10px;border-radius:8px;max-width:85%;word-break:break-word;font-size:13px;" +
-      (entry.me ? "align-self:flex-end;background:var(--go);color:#fff;margin-left:auto" :
+      (entry.me ? "align-self:flex-end;background:var(--go);color:var(--goText);margin-left:auto" :
                   "align-self:flex-start;background:var(--panel);border:1px solid var(--border)");
     bubble.innerHTML = (!entry.me ? "<b style='font-size:11px;display:block;margin-bottom:2px'>" + esc(entry.by) + "</b>" : "") +
       esc(entry.text);
-    var logEl = document.getElementById("partyLog");
-    if (logEl){ logEl.appendChild(bubble); logEl.scrollTop = logEl.scrollHeight; }
+    logEl.appendChild(bubble); logEl.scrollTop = logEl.scrollHeight;
   }
 
   function renderAllMsgs(){
-    var logEl = document.getElementById("partyLog");
+    var logEl = $("partyLog");
     if (!logEl) return;
     logEl.innerHTML = "";
     var msgs = S.partyLog || [];
     if (msgs.length === 0){
-      logEl.innerHTML = "<p class='muted' style='text-align:center;font-size:12px'>No messages yet. Say hi!</p>";
+      logEl.innerHTML = "<p class='muted partyEmpty' style='text-align:center;font-size:12px'>No messages yet. Say hi!</p>";
       return;
     }
     msgs.slice(-100).forEach(renderMsg);
   }
 
   renderAllMsgs();
-
-  function doSend(){
-    var v = inp.value.trim();
-    if (!v) return;
-    if (!partySend(v)){ toast("Not connected to a party"); return; }
-    inp.value = "";
-    renderAllMsgs();
-  }
-
-  sendBtn.onclick = doSend;
-  inp.onkeydown = function(e){ if (e.key === "Enter") doSend(); };
 }
 
 /* ---------- manifesto ---------- */
 
-/* ---- Checkout modal — cosmetic card form, no data stored, no charge ---- */
-function showCheckout(label, price, onSuccess){
-  /* overlay */
-  var ov = el("div");
-  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px";
-
-  var box = el("div");
-  box.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:380px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)";
-
-  box.innerHTML =
-    "<h2 style='margin:0 0 4px'>Complete Purchase</h2>" +
-    "<p class='muted' style='margin:0 0 16px'>" + esc(label) + " &mdash; <b>" + esc(price) + "</b></p>" +
-
-    "<label style='display:block;margin-bottom:12px'>" +
-      "<span style='font-size:12px;font-weight:600;display:block;margin-bottom:4px'>Name on card</span>" +
-      "<input id='co-name' type='text' placeholder='Jane Smith' autocomplete='cc-name' style='width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px'>" +
-    "</label>" +
-
-    "<label style='display:block;margin-bottom:12px'>" +
-      "<span style='font-size:12px;font-weight:600;display:block;margin-bottom:4px'>Card number</span>" +
-      "<input id='co-num' type='text' placeholder='1234 5678 9012 3456' maxlength='19' autocomplete='cc-number' inputmode='numeric' style='width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px'>" +
-    "</label>" +
-
-    "<div style='display:flex;gap:10px;margin-bottom:16px'>" +
-      "<label style='flex:1'>" +
-        "<span style='font-size:12px;font-weight:600;display:block;margin-bottom:4px'>Expiry</span>" +
-        "<input id='co-exp' type='text' placeholder='MM/YY' maxlength='5' autocomplete='cc-exp' inputmode='numeric' style='width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px'>" +
-      "</label>" +
-      "<label style='flex:1'>" +
-        "<span style='font-size:12px;font-weight:600;display:block;margin-bottom:4px'>Last 4 digits</span>" +
-        "<input id='co-cvv' type='text' placeholder='3456' maxlength='4' autocomplete='off' inputmode='numeric' style='width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:inherit;font-size:14px'>" +
-      "</label>" +
-    "</div>" +
-
-
-
-    "<div style='display:flex;gap:10px'>" +
-      "<button id='co-cancel' class='btn' style='flex:1'>Cancel</button>" +
-      "<button id='co-pay' class='btn go' style='flex:2'>Pay " + esc(price) + "</button>" +
-    "</div>" +
-    "<p id='co-err' style='color:#c4302b;font-size:12px;margin:8px 0 0;display:none'></p>";
-
-  ov.appendChild(box);
-  document.body.appendChild(ov);
-
-  /* auto-format card number with spaces */
-  var numInput = document.getElementById("co-num");
-  numInput.oninput = function(){
-    var v = this.value.replace(/\D/g,"").slice(0,16);
-    this.value = v.replace(/(\d{4})(?=\d)/g,"$1 ");
-  };
-  /* auto-format expiry */
-  var expInput = document.getElementById("co-exp");
-  expInput.oninput = function(){
-    var v = this.value.replace(/\D/g,"").slice(0,4);
-    if (v.length > 2) v = v.slice(0,2) + "/" + v.slice(2);
-    this.value = v;
-  };
-  /* last 4 digits only */
-  var cvvInput = document.getElementById("co-cvv");
-  cvvInput.oninput = function(){ this.value = this.value.replace(/\D/g,"").slice(0,4); };
-
-  function close(){ document.body.removeChild(ov); }
-  document.getElementById("co-cancel").onclick = close;
-
-  document.getElementById("co-pay").onclick = function(){
-    var err = document.getElementById("co-err");
-    var name = document.getElementById("co-name").value.trim();
-    var num  = numInput.value.replace(/\s/g,"");
-    var exp  = expInput.value.trim();
-    var cvv  = cvvInput.value.trim();
-
-    /* basic validation — purely cosmetic, not security */
-    if (!name){ err.textContent = "Please enter the name on your card."; err.style.display="block"; return; }
-    if (num.length < 16){ err.textContent = "Please enter a 16-digit card number."; err.style.display="block"; return; }
-    if (!/^\d{2}\/\d{2}$/.test(exp)){ err.textContent = "Expiry should be MM/YY."; err.style.display="block"; return; }
-    if (cvv.length < 4){ err.textContent = "Please enter the last 4 digits of your card."; err.style.display="block"; return; }
-
-    /* all fields vanish here — nothing is stored */
-    name = ""; num = ""; exp = ""; cvv = "";
-    close();
-    onSuccess();
-  };
-  setTimeout(function(){ document.getElementById("co-name") && document.getElementById("co-name").focus(); }, 80);
-}
 function pgEarn(p){
-  p.appendChild(el("div",null,'<h1>Buy Tickets &amp; Bolts</h1>'));
+  p.appendChild(el("div",null,'<h1>Tickets &amp; Bolts</h1>'));
   p.appendChild(el("div","panel",
     '<h2>How currency works</h2>' +
-    '<p>Tickets (Tix) and Bolts (B$) are the two currencies in Blox 2D. Buy them below, or convert between them anytime — 10 Tix = 1 B$.</p>' +
-    '<p class="muted">Tickets cover most of the catalog. Bolts unlock limited items and premium gear. ' +
-    'Every purchase goes straight to your account — no wait, no subscription required.</p>'));
+    '<p>Tickets (Tix) and Bolts (B$) are the two currencies in Blox 2D. Earn them by playing, or convert between them anytime — 10 Tix = 1 B$.</p>' +
+    '<p class="muted">Tickets cover most of the catalog. Bolts unlock limited items and premium gear.</p>'));
+  if (!allowSpend()){
+    p.appendChild(el("div","panel",'<h2>Frozen</h2><div class="lock">Buying and trading are switched off in parental controls.</div>'));
+    return;
+  }
+  p.appendChild(el("div","note",
+    '<b>Real payments are not switched on yet.</b> The packs below are a preview of what is planned \u2014 ' +
+    'nothing on this page asks for a card or takes money. Everything in the game can be earned by playing.'));
 
   /* ---- Shop tiers ---- */
   var shop = el("div","panel","<h2>Ticket Packs</h2>");
@@ -3035,19 +3014,9 @@ function pgEarn(p){
       "<div style='font-size:22px;font-weight:900;color:var(--go)'>🎟 " + pk.tix.toLocaleString() + "</div>" +
       "<div class='muted' style='font-size:11px;min-height:16px'>" + esc(pk.bonus) + "</div>" +
       "<div style='font-size:18px;font-weight:700;margin:6px 0'>" + esc(pk.price) + "</div>";
-    var btn = el("button","btn go","Buy");
+    var btn = el("button","btn","Coming soon");
     btn.style.cssText = "width:100%;margin-top:4px";
-    btn.onclick = (function(pk2){
-      return function(){
-        showCheckout(pk2.label, pk2.price, function(){
-          give("tix", pk2.tix);
-          if (pk2.rbx) give("rbx", pk2.rbx);
-          purse(); saveSoon();
-          toast("✅ " + pk2.tix.toLocaleString() + " Tickets" + (pk2.rbx ? " + " + pk2.rbx + " Bolts" : "") + " added!");
-          go("earn");
-        });
-      };
-    })(pk);
+    btn.disabled = true;
     card.appendChild(btn);
     grid.appendChild(card);
   });
@@ -3072,18 +3041,9 @@ function pgEarn(p){
       "<div style='font-size:20px;font-weight:900;color:var(--accent)'>⚡ " + pk.rbx + "</div>" +
       "<div style='font-size:11px' class='muted'>Bolts</div>" +
       "<div style='font-weight:700;margin:6px 0'>" + esc(pk.price) + "</div>";
-    var btn = el("button","btn","Buy");
+    var btn = el("button","btn","Coming soon");
     btn.style.cssText = "width:100%";
-    btn.onclick = (function(pk2){
-      return function(){
-        showCheckout(pk2.label, pk2.price, function(){
-          give("rbx", pk2.rbx);
-          purse(); saveSoon();
-          toast("✅ " + pk2.rbx + " Bolts added!");
-          go("earn");
-        });
-      };
-    })(pk);
+    btn.disabled = true;
     card.appendChild(btn);
     bgrid.appendChild(card);
   });
@@ -3120,7 +3080,7 @@ function pgEarn(p){
   function refreshEx(){ $("eTix").textContent = S.tix; $("eRbx").textContent = S.rbx; }
   $("eBtnToR").onclick = function(){
     if (!allowSpend()) return toast("Spending is frozen in parental controls");
-    var n = Math.max(10, parseInt($("eToR").value,10)||0);
+    var n = Math.max(10, Math.floor((parseInt($("eToR").value,10)||0) / 10) * 10);   /* whole tens only */
     if (S.tix < n) return toast("Not enough Tickets (" + S.tix + " on hand)");
     S.tix -= n; S.rbx += Math.floor(n/10); purse(); saveSoon();
     toast("Converted " + n + " Tickets → " + Math.floor(n/10) + " Bolts"); refreshEx();
@@ -4272,7 +4232,7 @@ var CHALLENGES = [
   {kind:"errand",  place:"Town of Tiles",              text:"Finish the errand in Town of Tiles"},
   {kind:"kos",     place:"Rocket Arena", n:3,          text:"Get 3 knockouts in one game of Rocket Arena"},
   {kind:"battle",  place:"Swordfights in the Sky",     text:"Win a round in Swordfights in the Sky"},
-  {kind:"finish",  place:"Happy Home on the Hill",     text:"Reach the flag in Happy Home on the Hill"},
+  {kind:"errand",  place:"Happy Home on the Hill",     text:"Bring BrickLady 5 coins in Happy Home on the Hill"},
   {kind:"bricks",  place:"Sunset Sandbox", n:15,       text:"Lay 15 bricks in one visit to Sunset Sandbox"},
   {kind:"coins",   place:"Escape the Lava Temple", n:8, text:"Collect 8 coins in one run of Escape the Lava Temple"}
 ];
@@ -4872,7 +4832,7 @@ function tryRelay(roomId, relayBase, cb){
           onLeave: function(fn){ conn._onLeave = fn; },
           close: function(){ clearInterval(ka); try { ws.close(); } catch(ex){} }
         };
-        ws.onclose = function(){ delete Net.peers; Net.peers = {}; if(!done) cb(false,"relay closed early"); };
+        ws.onclose = function(){ if (Net.conn === conn) Net.peers = {}; };
         ws.onerror = function(){};
         cb(true, conn, "relay");
       } else if (o.t === "join" && joined){ peers[o.from]=true; if(Net.onJoin) Net.onJoin(o.from); }
@@ -4920,33 +4880,42 @@ function tryBrokers(roomId, cb){
   });
 }
 
+/* Opens one socket to a room and hands it back — touches nothing global,
+   so the game and Party Chat can each hold their own. cb(ok, connOrErr, via) */
+function netConnect(roomId, cb){
+  var relay = getRelayUrl();
+  if (relay){
+    tryRelay(roomId, relay, function(ok, connOrErr, via){
+      if (ok) return cb(true, connOrErr, via);
+      toast("Relay: "+connOrErr+" — trying public brokers…", 3000);
+      tryBrokers(roomId, cb);
+    });
+  } else {
+    tryBrokers(roomId, function(ok, connOrErr, via){
+      if (ok) return cb(true, connOrErr, via);
+      cb(false, "Could not get online. At school? Go to Account tab → Online play and set up a relay.", null);
+    });
+  }
+}
 function netJoin(roomId, cb){
   Net.status = "connecting"; Net.err = ""; Net.peers = {}; Net.room = roomId; Net.via = "";
-  var relay = getRelayUrl();
-  function finish(ok, connOrErr, via){
+  netConnect(roomId, function(ok, connOrErr, via){
     if (!ok){
       Net.status = "failed"; Net.err = String(connOrErr||"could not connect");
       return cb(false);
     }
     var conn = connOrErr;
     Net.conn = conn; Net.id = conn.id; Net.status = "online"; Net.via = via || "";
-    conn.onMsg(function(data, peer){ if (Net.onMsg) Net.onMsg(data, peer); });
+    conn.onMsg(function(data, peer){
+      /* the public brokers never announce joins, so anyone who speaks counts as here */
+      var from = (data && data.from) || peer;
+      if (typeof from === "string" && from && from.length <= 80 && from !== Net.id) Net.peers[from] = true;
+      if (Net.onMsg) Net.onMsg(data, peer);
+    });
     conn.onJoin(function(id){ Net.peers[id] = true; if (Net.onJoin) Net.onJoin(id); });
     conn.onLeave(function(id){ delete Net.peers[id]; if (Net.onLeave) Net.onLeave(id); });
     cb(true);
-  }
-  if (relay){
-    tryRelay(roomId, relay, function(ok, connOrErr, via){
-      if (ok) return finish(true, connOrErr, via);
-      toast("Relay: "+connOrErr+" — trying public brokers…", 3000);
-      tryBrokers(roomId, finish);
-    });
-  } else {
-    tryBrokers(roomId, function(ok, connOrErr, via){
-      if (ok) return finish(true, connOrErr, via);
-      finish(false, "Could not get online. At school? Go to Account tab → Online play and set up a relay.", null);
-    });
-  }
+  });
 }
 function netSend(type, data){
   if (Net.status !== "online" || !Net.conn) return;
@@ -4985,7 +4954,7 @@ function isCode(str){ return /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/.test(str 
 
 function roomIdFor(rec, shard){
   /* a code names one room, so everybody typing it lands together */
-  if (rec.code) return "blox2d-code-" + rec.code;
+  if (rec.code) return "blox2d-code-" + rec.code.toLowerCase();   /* the relay only takes lowercase room ids */
   return roomSlug(rec) + "-s" + (shard || 1);
 }
 /* Walks the shards until it finds one with room, the way a server list does.
@@ -4997,7 +4966,7 @@ function netJoinShard(rec, shard, wanted, cb){
     if (wanted) { Net.shard = shard; return cb(true, shard); }   /* they picked this one on purpose */
     setTimeout(function(){
       if (Net.status !== "online") return cb(false, shard);
-      if (netCount() <= ROOM_CAP || shard >= MAX_SHARDS){ Net.shard = shard; return cb(true, shard); }
+      if (netCount() <= ROOM_CAP + 1 || shard >= MAX_SHARDS){ Net.shard = shard; return cb(true, shard); }
       netLeave();
       netJoinShard(rec, shard + 1, false, cb);
     }, PROBE_MS);
@@ -5023,6 +4992,25 @@ function peerAllowed(id){
 function resetPeerBooks(){ peerBooks = {}; }
 function finite(n){ return typeof n === "number" && isFinite(n); }
 function sane(n, lo, hi){ return finite(n) && n >= lo && n <= hi; }
+/* Bricks from a code, a transfer or another player: every field checked,
+   anything odd dropped, so nothing that arrives can crash the renderer. */
+var PART_TYPES = ["solid","kill","bounce","ice","spawn","deco","check","goal","coin"];
+function scrubParts(list, max){
+  if (Object.prototype.toString.call(list) !== "[object Array]" || !list.length || list.length > (max || 1400)) return null;
+  var out = [];
+  for (var i=0;i<list.length;i++){
+    var p = list[i];
+    if (!p || typeof p !== "object") continue;
+    if (!sane(p.x, -80000, 80000) || !sane(p.y, -80000, 80000) || !sane(p.w, 0.5, 8000) || !sane(p.h, 0.5, 8000)) continue;
+    out.push({x:Math.round(p.x), y:Math.round(p.y), w:Math.max(1, Math.round(p.w)), h:Math.max(1, Math.round(p.h)),
+              c:hex(p.c, "#c4302b"), t:(PART_TYPES.indexOf(p.t) >= 0 ? p.t : "solid"), b:p.b ? 1 : 0});
+  }
+  return out.length ? out : null;
+}
+function cleanColors(c, dflt){
+  if (!c || typeof c !== "object") return dflt;
+  return {head:hex(c.head, dflt.head), torso:hex(c.torso, dflt.torso), arms:hex(c.arms, dflt.arms), legs:hex(c.legs, dflt.legs)};
+}
 
 /* ============================================================
    THE LOGIN SCREEN
@@ -5117,6 +5105,7 @@ function enterAs(acc, cb){
   });
 }
 function logOut(){
+  partyLeave();
   flushSaves();
   if (G) stopGame();
   $("site").style.display = "none";
@@ -5331,17 +5320,9 @@ function readAccountCode(str){
   var places = [];
   if (Object.prototype.toString.call(o.p) === "[object Array]"){
     o.p.slice(0, 40).forEach(function(pl){
-      if (!pl || !pl.parts || !pl.parts.length || pl.parts.length > 1400) return;
-      var parts = pl.parts.filter(function(p){
-        return p && typeof p.x === "number" && isFinite(p.x) && typeof p.y === "number" && isFinite(p.y) &&
-               p.w > 0 && p.h > 0 && p.w < 8000 && p.h < 8000;
-      }).map(function(p){
-        return {x:Math.round(p.x), y:Math.round(p.y), w:Math.round(p.w), h:Math.round(p.h),
-                c: hex(p.c, "#c4302b"),
-                t: (["solid","kill","bounce","ice","spawn","deco","check","goal","coin"].indexOf(p.t) >= 0 ? p.t : "solid"),
-                b: p.b ? 1 : 0};
-      });
-      if (!parts.length) return;
+      if (!pl) return;
+      var parts = scrubParts(pl.parts);
+      if (!parts) return;
       places.push({id:"tr" + hash(String(pl.name) + parts.length + places.length),
                    name: cleanName(pl.name) || "A place", by: cleanName(pl.by) || clean.name,
                    mode:(parts.some(function(p){ return p.t === "goal"; }) ? "obby" : "build"), parts:parts, plays:0, saved:now(),
@@ -5671,6 +5652,7 @@ function pgAccount(p){
       b.onclick = function(){
         flushSaves();
         if (G) stopGame();
+        partyLeave();
         enterAs(acc);
       };
       list.appendChild(b);
@@ -6040,6 +6022,7 @@ function targetList(){
 function remoteCount(){ var n = 0; for (var id in G.remotes) n++; return n; }
 function sendWorld(){
   if (!G || !G.online || !G.rec.custom) return;
+  if (G.rec.waiting && !G.gotWorld) return;        /* a guest still waiting has only a placeholder to offer */
   var parts = G.W.parts.map(function(p){
     var o = {x:Math.round(p.x), y:Math.round(p.y), w:p.w, h:p.h, c:p.c, t:p.t};
     if (p.bg) o.b = 1;
@@ -6062,17 +6045,24 @@ function wireNet(rec){
         if (remoteCount() >= 24) return;                /* the mesh has a ceiling; do not pretend otherwise */
         r = G.remotes[id] = {remote:true, bot:true, id:id, w:PW, h:PH, x:d.x, y:d.y,
                              phase:0, run:0, face:1, ko:0, wo:0, maxhp:100, hp:100, shield:0};
-        pushChat(resolveRemoteName(id, d.n, d.fp) + " joined");
+        pushChat(resolveRemoteName(id, typeof d.n === "string" ? d.n : "", d.fp) + " joined");
+        /* the public brokers never announce arrivals, so a new face is the cue to hand over the place */
+        if (!G.worldTimer){
+          var g0 = G;
+          G.worldTimer = setTimeout(function(){ if (G === g0){ G.worldTimer = null; sendWorld(); } }, 300);
+        }
       }
       r.tx = d.x; r.ty = d.y; r.face = d.f < 0 ? -1 : 1; r.run = sane(d.r, 0, 1) ? d.r : 0;
       r.hp = sane(d.hp, 0, 100) ? d.hp : 100; r.dead = !!d.dd;
-      r.colors = d.co || r.colors || S.colors;
-      r.hat = allowGear() ? d.ht : d.ht; r.faceId = d.fa; r.shirt = d.sh;
+      r.colors = cleanColors(d.co, r.colors || S.colors);
+      r.hat = knownId(d.ht, "hat") || (d.ht === "e_horseman" ? "e_horseman" : null);
+      r.faceId = knownId(d.fa, "face") || ((typeof d.fa === "string" && /^cf_[a-z0-9]{1,16}$/.test(d.fa)) ? d.fa : "f_smile");
       if (typeof d.em === "string" && EMOTES.indexOf(d.em) >= 0) r.emote = {n:d.em, t:0.6};
-      r.gear = gearHere() ? d.g : null;
-      r.shirt = typeof d.sh === "string" ? d.sh.slice(0, 24) : null;
+      r.gear = gearHere() ? knownId(d.g, "gear") : null;
+      r.shirt = knownId(d.sh, "shirt") || ((typeof d.sh === "string" && /^cs_[a-z0-9]{1,16}$/.test(d.sh)) ? d.sh : null);
       r.fp = typeof d.fp === "string" ? d.fp.slice(0, 6) : "";
-      r.name = resolveRemoteName(id, d.n, r.fp); r.ko = d.ko || 0; r.wo = d.wo || 0;
+      r.name = resolveRemoteName(id, typeof d.n === "string" ? d.n : "", r.fp);
+      r.ko = num(d.ko, 0, 9999, 0); r.wo = num(d.wo, 0, 9999, 0);
       r.last = now();
     } else if (d.t === "cf"){
       if (book.cf && now() - book.cf < 30000) return;
@@ -6124,19 +6114,21 @@ function wireNet(rec){
     } else if (d.t === "w"){
       /* somebody in the room is standing in a place we do not have — take a copy */
       if (!G.rec.custom || G.gotWorld || book.got) return;
+      if (G.rec.code && !G.rec.waiting) return;        /* the host keeps their own place */
       book.got = 1;
-      if (!d.parts || !d.parts.length || d.parts.length > 1400) return;
+      var wparts = scrubParts(d.parts);
+      if (!wparts) return;
       G.gotWorld = true;
       G.W.noGear = !!d.ng;
       if (G.W.noGear) buildHotbar();
-      G.W.parts = d.parts.map(function(p){ return part(p.x, p.y, p.w, p.h, p.c, p.t, {bg:!!p.b}); });
+      G.W.parts = wparts.map(function(p){ return part(p.x, p.y, p.w, p.h, p.c, p.t, {bg:!!p.b}); });
+      G.W.grid = null; G.W.fadeList = null;          /* the old world's lookups no longer apply */
+      wireObby(G.W);                                 /* their flag, checkpoints and coins work here too */
       var sp = G.W.parts.filter(function(p){ return p.t === "spawn"; })[0];
       if (sp){ G.W.spawn = {x:sp.x, y:sp.y - PH - 2}; G.checkpoint = {x:G.W.spawn.x, y:G.W.spawn.y}; }
-      importPlace({name:String(d.name||"A place").slice(0,50), by:displayName(id, d.by), parts:d.parts,
-                   noGear:!!d.ng, code:G.rec.code}, true);
-      toast("Loaded “" + String(d.name||"their place").slice(0,40) + "” from " + displayName(id, d.by), 3200);
-    } else if (d.t === "k"){
-      pushChat(String(d.text || "").slice(0,90));
+      var wname = filterChat(String(d.name || "A place").slice(0, 50)), wby = displayName(id, typeof d.by === "string" ? d.by : "");
+      importPlace({name:wname, by:wby, parts:wparts, noGear:!!d.ng, code:G.rec.code}, true);
+      toast("Loaded \u201c" + wname.slice(0,40) + "\u201d from " + wby, 3200);
     }
   };
   Net.onLeave = function(id){
@@ -6333,7 +6325,17 @@ function update(dt){
       bj = b.vx === 0 && bw !== 0 && b.ground && Math.random() < 0.3;
     } else {
       var dx = (m.x - b.x), dy = (m.y - b.y), dist = Math.abs(dx);
-      if (m.dead){ bw = (b.think <= 0 ? (b.dirn = Math.random()<0.5?-1:1) : b.dirn); if (b.think <= 0) b.think = 2; }
+      /* raiders are after the core: they only turn on you when you stand in the way */
+      var core = (b.target && !b.target.gone) ? b.target : null;
+      var cdx = core ? (core.x + core.w/2) - (b.x + b.w/2) : 0;
+      if (core && (m.dead || dist > 220 || Math.abs(cdx) < dist)){
+        bw = Math.abs(cdx) > core.w/2 + 18 ? (cdx > 0 ? 1 : -1) : 0;
+        if (b.vx === 0 && bw !== 0 && b.ground) bj = true;
+        if (Math.abs(cdx) < core.w/2 + 40 && b.cool <= 0){
+          b.cool = 0.9; b.swing = 0.22; b.face = cdx > 0 ? 1 : -1;
+          hitBricks(b.x + b.w/2 + b.face*30, b.y + b.h*0.42, 34, b.gear ? 10 : 6);
+        }
+      } else if (m.dead){ bw = (b.think <= 0 ? (b.dirn = Math.random()<0.5?-1:1) : b.dirn); if (b.think <= 0) b.think = 2; }
       else {
         bw = dist > 46 ? (dx > 0 ? 1 : -1) : 0;
         if (dy < -50 && b.ground && Math.random() < 0.14) bj = true;          /* they're above: hop */
@@ -6450,6 +6452,7 @@ function update(dt){
 
   /* whatever this place actually asks of you */
   if (W.obj && !G.over) objective(dt);
+  else if (W.goal && !G.over) G.runT = (G.runT || 0) + dt;      /* a plain obby still keeps time */
 
   /* the finish flag */
   if (W.goal && !G.over && !m.dead && overlaps(m.x, m.y, m.w, m.h, W.goal)){
@@ -6530,7 +6533,7 @@ function update(dt){
     }
     for (var rid in G.remotes){
       var rp = G.remotes[rid];
-      if (now() - (rp.last||0) > 12000){ delete G.remotes[rid]; continue; }
+      if (now() - (rp.last||0) > 12000){ delete G.remotes[rid]; delete Net.peers[rid]; continue; }
       var lerp = Math.min(1, 14*dt);
       rp.x += ((rp.tx == null ? rp.x : rp.tx) - rp.x) * lerp;
       rp.y += ((rp.ty == null ? rp.y : rp.ty) - rp.y) * lerp;
@@ -6679,7 +6682,7 @@ function drawBoard(){
   rows.sort(function(a,b){ return b.ko - a.ko; });
   var h = "<table><tr><td><b>Player</b></td><td><b>KO</b></td><td><b>WO</b></td></tr>";
   rows.forEach(function(r){
-    h += '<tr class="' + (r.me?"me":"") + '"><td>' + esc(r.n) + "</td><td>" + r.ko + "</td><td>" + r.wo + "</td></tr>";
+    h += '<tr class="' + (r.me?"me":"") + '"><td>' + esc(r.n) + "</td><td>" + esc(r.ko) + "</td><td>" + esc(r.wo) + "</td></tr>";
   });
   $("hudBoard").innerHTML = h + "</table>";
 }
@@ -6924,7 +6927,7 @@ function brickBody(g, p){
     g.strokeStyle="rgba(0,0,0,.18)";g.lineWidth=1;g.stroke();
   }
   g.fillStyle = p.c; g.fillRect(p.x, p.y, p.w, p.h);
-  if (p.h > 120 && p.t === "solid" && p.c.charAt(0) === "#"){
+  if (p.h > 120 && p.t === "solid" && typeof p.c === "string" && p.c.charAt(0) === "#"){
     g.fillStyle = shade(p.c, 0.62); g.fillRect(p.x, p.y + 46, p.w, p.h - 46);
     g.fillStyle = shade(p.c, 0.5);
     for (var sx=0; sx<p.w; sx+=70) g.fillRect(p.x + sx + (Math.floor(p.y+sx)%2?18:0), p.y + 96, 34, 12);
@@ -7207,15 +7210,10 @@ function readCode(str){
   if (str.indexOf("BLOX1:") !== 0) return null;
   try {
     var o = JSON.parse(decodeURIComponent(escape(atob(str.slice(6)))));
-    if (!o || !o.p || !o.p.length || o.p.length > 1400) return null;
-    var parts = o.p.filter(function(p){
-      return typeof p.x === "number" && typeof p.y === "number" && p.w > 0 && p.h > 0;
-    }).map(function(p){
-      return {x:p.x, y:p.y, w:p.w, h:p.h, c:(typeof p.c === "string" ? p.c.slice(0,24) : "#c4302b"),
-              t:(["solid","kill","bounce","ice","spawn","deco","check","goal","coin"].indexOf(p.t) >= 0 ? p.t : "solid"), b:p.b ? 1 : 0};
-    });
-    if (!parts.length) return null;
-    return {name:String(o.n||"A place").slice(0,50), by:String(o.by||"someone").slice(0,20), parts:parts, noGear:!!o.ng};
+    if (!o || typeof o !== "object") return null;
+    var parts = scrubParts(o.p);
+    if (!parts) return null;
+    return {name:filterChat(String(o.n||"A place").slice(0,50)), by:filterChat(String(o.by||"someone").slice(0,20)), parts:parts, noGear:!!o.ng};
   } catch(e){ return null; }
 }
 function importPlace(data, quiet){
@@ -7235,6 +7233,10 @@ function importPlace(data, quiet){
 /* ---------- studio page ---------- */
 function pgStudio(p){
   p.appendChild(el("div",null,'<h1>Studio</h1>'));
+  if (!allowStudio()){
+    p.appendChild(el("div","panel",'<h2>Switched off</h2><div class="lock">Studio is switched off in parental controls \u2014 no building or publishing.</div>'));
+    return;
+  }
   p.appendChild(el("div","panel",
     '<h2>Build a place</h2>' +
     '<p>Lay bricks on a grid, pick what each one does — normal, lava, trampoline, slippery, spawn point — then test it as your own character and publish it to the Games page.</p>' +
@@ -7248,27 +7250,28 @@ function pgStudio(p){
   var tut = el("div","panel", '<h2>📖 How to use Studio</h2>');
   var steps = [
     ['1. Open Studio', 'Hit <b>Open Studio</b> above. A blank place loads with a grey floor and a green spawn point already placed. That green brick is where your character starts — don\'t delete it or you\'ll fall forever.'],
-    ['2. Place bricks', 'Left-click anywhere on the canvas to stamp a brick. Hold and drag to fill a row quickly. The brick goes down in whatever colour and type is selected in the toolbar at the top.'],
-    ['3. Remove bricks', 'Right-click (or tap the 🗑 Remove button on mobile) to switch into erase mode. Click any brick to delete it. Click the mode button again to go back to placing.'],
-    ['4. Pick a brick type', 'The toolbar shows the current brick type. Click it to cycle through:<br>' +
+    ['2. Place bricks', 'Click (or tap) anywhere on the canvas to stamp a brick. It goes down in whatever colour, size and type is selected in the toolbar at the top, snapped to a 20-pixel grid.'],
+    ['3. Remove bricks', 'Right-click, or press the <b>Placing</b> button in the toolbar so it reads <b>Removing</b>. Now a click deletes the brick under it. Press the button again to go back to placing.'],
+    ['4. Pick a brick type', 'The type menu in the toolbar decides what a brick does:<br>' +
       '<ul style="margin:.4em 0 0 1em">' +
-      '<li><b>Solid</b> — a normal brick. Blocks movement.</li>' +
-      '<li><b>Lava</b> — kills on contact. Glows orange.</li>' +
+      '<li><b>Normal</b> — a solid brick. Blocks movement.</li>' +
+      '<li><b>Lava</b> — kills on contact. Glows orange. The <b>🔥 Lava</b> button (or Shift+click) flips any brick between lava and normal.</li>' +
       '<li><b>Trampoline</b> — bounces the player upward.</li>' +
       '<li><b>Slippery</b> — low friction, hard to stop on.</li>' +
-      '<li><b>Spawn</b> — where players appear. One is enough; extra ones are all valid spawn spots.</li>' +
-      '<li><b>Checkpoint</b> — touch it and you respawn here if you die.</li>' +
-      '<li><b>Coin</b> — collectible. Count them up for an obby objective.</li>' +
-      '<li><b>Goal</b> — finish line. Touching it ends the obby.</li>' +
+      '<li><b>Spawn point</b> — where players appear.</li>' +
+      '<li><b>Decoration</b> — drawn, but you walk straight through it.</li>' +
+      '<li><b>Checkpoint</b> — touch it and you respawn here if you fall.</li>' +
+      '<li><b>Coin</b> — collectible, worth Tickets.</li>' +
+      '<li><b>Finish flag</b> — touching it ends the run. A place with a flag becomes an obby with a timer.</li>' +
       '</ul>'],
-    ['5. Pick a colour', 'Click the colour swatch in the toolbar to open the colour picker. The colour is just visual — the brick type decides what it does.'],
-    ['6. Move the view', 'WASD or arrow keys pan the camera. On mobile, drag the canvas with two fingers. Your place can be as wide or tall as you like.'],
-    ['7. Test your place', 'Hit <b>Test</b> in the toolbar. You drop in as your character with your full gear belt. Walk around, try to break it — if something is wrong, hit <b>Leave game</b> and you\'re back in the editor exactly where you left off.'],
-    ['8. Name your place', 'Click the place name at the top of the toolbar to rename it. Pick something good — this is what shows up on the Games page.'],
-    ['9. Gear rule', '<b>Gear: on / off</b> in the toolbar controls whether swords, rockets and other gear work inside this place. Turn it off for a peaceful obby. The rule applies to everyone who joins, including online visitors.'],
-    ['10. Publish', 'Hit <b>Publish</b>. The place appears on the Games page under Your places, and anyone in an online room with you can join it. Published places earn you the <b>Builder</b> badge on your first publish.'],
-    ['11. It saves itself', 'Studio autosaves every few seconds while you build, again when you leave, and again when you close or switch tabs. You never have to press Save.'],
-    ['12. Share your place', 'On the Games page, open your place and hit <b>Share</b> to copy a BLOX1: code. Anyone can paste that into the <b>Bring in a place</b> box in their Studio to load your exact world.']
+    ['5. Colour, size and layer', 'The colour swatches set the brick colour — it is just looks; the type decides what it does. The size menu picks brick, cube, plank, post, beam or stud. <b>Front / Background</b> switches layers: background bricks are drawn behind you and never block.'],
+    ['6. Move the view', 'WASD or the arrow keys pan the camera. On a phone or tablet, the on-screen stick pans it. Your place can be as wide or tall as you like.'],
+    ['7. Test your place', 'Hit <b>Test it</b> in the toolbar. You drop in as your character with your gear belt. Walk around, try to break it — press <b>Leave game</b> and you\'re back in the editor exactly where you left off.'],
+    ['8. Name your place', 'Type in the <b>Place name</b> box in the toolbar. That name is what shows up on the Games page.'],
+    ['9. Gear rule', '<b>Gear: allowed / off</b> in the toolbar controls whether swords, rockets and other gear work inside this place. Turn it off for a peaceful obby. The rule applies to everyone who joins, including online visitors.'],
+    ['10. Save and publish', 'Hit <b>Save now</b>. The place appears on the Games page under <b>Places built in Studio</b>, and your first save earns the <b>Published</b> badge.'],
+    ['11. It saves itself', 'Studio autosaves a few seconds after your last change, again when you leave, and again when you close or switch tabs. Save now is there for peace of mind.'],
+    ['12. Share your place', 'On the Games page, press <b>Share</b> on your place to get a long <b>BLOX1:</b> code. Anyone can paste it into <b>Bring in a place from a full code</b> on their Games page to keep an exact copy. Or press <b>Host online</b> and give friends the six-character code to play it with you live.']
   ];
   steps.forEach(function(st){
     var sec = el("div", null,
@@ -7364,12 +7367,16 @@ if (window.__BLOX_TEST__) window.__blox = {
   guestIn:function(cb){ enterAs({name:"Guest", slug:"guest", key:"blox2d:state:guest",
                                  pkey:"blox2d:places:guest", guest:true, pw:""}, cb); },
   give:give, purse:purse, nameTag:nameTag, myTaggedName:myTaggedName, stripTag:stripTag, guestAccount:guestAccount, slugName:slugName, hasLayout:hasLayout,
-  checkWin:checkWin, challengeEvent:challengeEvent, hash:hash, fpDisplay:fpDisplay
+  checkWin:checkWin, challengeEvent:challengeEvent, hash:hash, fpDisplay:fpDisplay,
+  Party:Party, partyJoin:partyJoin, partySend:partySend, partyLeave:partyLeave, scrubParts:scrubParts
 };
 /* every way a page can go away */
 window.addEventListener("beforeunload", flushSaves);
 window.addEventListener("pagehide", flushSaves);
-window.addEventListener("blur", flushSaves);
+window.addEventListener("blur", function(){
+  flushSaves();
+  for (var k in K) K[k] = false;     /* a key let go in another window never sends keyup here */
+});
 document.addEventListener("visibilitychange", function(){
   if (document.visibilityState === "hidden") flushSaves();
   else if (G) G.last = now();   /* coming back should not count the time away as one frame */
