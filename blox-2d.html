@@ -793,6 +793,11 @@ var CATALOG = [
   {id:"h_bucket",   kind:"hat",  name:"Bucket of Bricks",    price:25,   cur:"tix", by:"BLOX"},
   {id:"h_prop",     kind:"hat",  name:"Propeller Beanie",    price:90,   cur:"tix", by:"BLOX"},
   {id:"h_pirate",   kind:"hat",  name:"Pirate Bandana",      price:70,   cur:"tix", by:"BLOX"},
+  {id:"h_cone",     kind:"hat",  name:"Traffic Cone",        price:30,   cur:"tix", by:"BLOX"},
+  {id:"h_chef",     kind:"hat",  name:"Chef's Hat",          price:55,   cur:"tix", by:"BLOX"},
+  {id:"h_phones",   kind:"hat",  name:"Headphones",          price:95,   cur:"tix", by:"BLOX"},
+  {id:"h_wizard",   kind:"hat",  name:"Wizard Hat",          price:140,  cur:"tix", by:"BLOX"},
+  {id:"h_frost",    kind:"hat",  name:"Frost Crown",         price:75,   cur:"rbx", by:"BLOX"},
   {id:"f_smile",    kind:"face", name:"Classic Smile",       price:0,    cur:"tix", by:"BLOX"},
   {id:"f_grin",     kind:"face", name:"Cheerful Grin",       price:30,   cur:"tix", by:"BLOX"},
   {id:"f_cool",     kind:"face", name:"Shades",              price:65,   cur:"tix", by:"BLOX"},
@@ -834,7 +839,8 @@ var GAMES = [
   {name:"Sunset Sandbox",          by:"BrickWorks", mode:"build"},
   {name:"Town of Tiles",           by:"Mayor_Bob",  mode:"town"},
   {name:"Spirefall Brickbattle",   by:"BLOX",       mode:"battle"},
-  {name:"The Rising Water",    by:"Stratus",    mode:"disaster"}
+  {name:"The Rising Water",    by:"Stratus",    mode:"disaster"},
+  {name:"Frostbite Peak",          by:"MazeRunner7", mode:"obby"}
 ];
 
 var BADGES = [
@@ -857,10 +863,16 @@ var BADGES = [
   {id:"b_pl_town-of-tiles",            name:"Errand Runner",     how:"Finish the errand in Town of Tiles."},
   {id:"b_pl_spirefall-brickbattle",    name:"Spire Breaker",     how:"Bring down every enemy spire in Spirefall Brickbattle."},
   {id:"b_pl_the-rising-water",         name:"High and Dry",      how:"Reach the top of The Rising Water."},
+  {id:"b_pl_frostbite-peak",           name:"Summiteer",         how:"Reach the summit flag on Frostbite Peak."},
   {id:"b_tour",    name:"Grand Tour",       how:"Earn the badge of every place on the Games page."},
   {id:"b_survive", name:"Survivor",         how:"Live through a whole disaster round."},
   {id:"b_rich",    name:"Ticket Collector", how:"Hold 500 Tickets at once."},
-  {id:"b_publish", name:"Published",        how:"Publish a place from Studio."}
+  {id:"b_publish", name:"Published",        how:"Publish a place from Studio."},
+  {id:"b_fast",    name:"Speedrunner",      how:"Finish any obby in under a minute."},
+  {id:"b_emotes",  name:"Expressive",       how:"Use every emote at least once."},
+  {id:"b_party",   name:"Party Animal",     how:"Send a message in Party Chat."},
+  {id:"b_hats",    name:"Hat Collector",    how:"Own ten hats."},
+  {id:"b_bolts",   name:"Bolt Baron",       how:"Hold 100 Bolts at once."}
 ];
 
 var PEOPLE = [
@@ -1343,7 +1355,7 @@ function freshState(){
     wear:{hat:null, face:"f_smile", shirt:null},
     belt:["g_sword","g_trowel",null,null,null],
     colors:{head:"#f2d0a4", torso:"#f7d117", arms:"#f2d0a4", legs:"#2f6bb0"},
-    badges:[], friends:[], groups:[], bricks:0, ko:0, wo:0, played:0, kid:freshKid(), records:{}, shirts:[], faces:[], theme:null, themes:[], streak:{n:0, last:""},
+    badges:[], friends:[], groups:[], bricks:0, ko:0, wo:0, played:0, kid:freshKid(), records:{}, shirts:[], faces:[], theme:null, themes:[], streak:{n:0, last:""}, emotes:[],
     forum:null, seen:false, partyCode:null, partyLog:[]
   };
 }
@@ -1424,6 +1436,7 @@ function savePlaces(cb){
 function give(cur, n){
   if (cur === "rbx") S.rbx = Math.max(0, S.rbx + n); else S.tix = Math.max(0, S.tix + n);
   if (S.tix >= 500) award("b_rich");
+  if (S.rbx >= 100) award("b_bolts");
   purse(); saveSoon();
 }
 function purse(){
@@ -1439,6 +1452,10 @@ function award(id){
   return true;
 }
 function owns(id){ return S.owned.indexOf(id) >= 0; }
+function checkCollections(){
+  var hats = S.owned.filter(function(id){ return byId[id] && byId[id].kind === "hat"; }).length;
+  if (hats >= 10) award("b_hats");
+}
 
 /* ============================================================
    AVATAR — one blocky character, drawn everywhere
@@ -1521,6 +1538,10 @@ function drawChar(g, x, y, o){
     else if (o.emote.n === "laugh"){ bob += Math.abs(Math.sin(et * 13)) * 3; armA = 0.9; armB = 0.9; }
     else if (o.emote.n === "point"){ armA = -1.5; }
     else if (o.emote.n === "sit"){ legA = -1.5; legB = -1.5; bob += 10; }
+    else if (o.emote.n === "cheer"){ armA = -2.8 + Math.sin(et * 12) * 0.25; armB = -2.8 - Math.sin(et * 12) * 0.25; bob -= Math.abs(Math.sin(et * 8)) * 5; }
+    else if (o.emote.n === "shrug"){ armA = -0.75; armB = 0.75; bob -= Math.abs(Math.sin(et * 5)) * 1.5; }
+    else if (o.emote.n === "salute"){ armA = -2.45; }
+    else if (o.emote.n === "flex"){ armA = -1.9 + Math.sin(et * 7) * 0.2; armB = 1.9 - Math.sin(et * 7) * 0.2; }
     hipY = -22 + bob; shoY = -44 + bob;
     gear = null;                       /* hands are busy */
   }
@@ -1643,7 +1664,7 @@ function drawHeldGear(g, id, hand, bob, c){
   }
   g.restore();
 }
-var EMOTES = ["dance","wave","laugh","point","sit"];
+var EMOTES = ["dance","wave","laugh","point","sit","cheer","shrug","salute","flex"];
 function drawFace(g, id, blink, img){
   var custom = (img && img.naturalWidth) ? img
              : ((typeof id === "string" && id.indexOf("cf_") === 0) ? shirtImg(id) : null);
@@ -1713,6 +1734,27 @@ function drawHat(g, id){
     g.fillStyle="#2f6bb0"; g.fillRect(-1,-76,2,7); g.fillStyle="#f7d117"; g.fillRect(-11,-77,22,3); return; }
   if (id === "h_pirate"){ g.fillStyle="#c4302b"; g.fillRect(-10,-68,20,5);
     g.fillStyle="#16191d"; g.fillRect(-11,-67,4,9); return; }
+  if (id === "h_cone"){ g.fillStyle="#ff8a3d";
+    g.beginPath(); g.moveTo(-9,-64); g.lineTo(9,-64); g.lineTo(1,-92); g.lineTo(-1,-92); g.closePath(); g.fill();
+    g.fillStyle="#f2f2f2"; g.fillRect(-6,-76,12,4); g.fillRect(-3,-85,6,3);
+    g.fillStyle="#e0491f"; g.fillRect(-13,-67,26,4); return; }
+  if (id === "h_chef"){ g.fillStyle="#f2f2f2"; g.fillRect(-9,-80,18,14);
+    g.beginPath(); g.arc(-6,-81,6,0,Math.PI*2); g.arc(6,-81,6,0,Math.PI*2); g.fill();
+    g.beginPath(); g.arc(0,-85,7,0,Math.PI*2); g.fill();
+    g.fillStyle="#d6dbe0"; g.fillRect(-10,-68,20,4); return; }
+  if (id === "h_phones"){ g.strokeStyle="#26292e"; g.lineWidth=3;
+    g.beginPath(); g.arc(0,-60,12,Math.PI*1.05,Math.PI*1.95); g.stroke();
+    g.fillStyle="#c4302b"; g.fillRect(-14,-61,6,11); g.fillRect(8,-61,6,11);
+    g.fillStyle="#26292e"; g.fillRect(-14,-61,6,2); g.fillRect(8,-61,6,2); return; }
+  if (id === "h_wizard"){ g.fillStyle="#5b3bd6";
+    g.beginPath(); g.moveTo(-12,-65); g.lineTo(12,-65); g.lineTo(4,-98); g.closePath(); g.fill();
+    g.fillRect(-15,-67,30,4);
+    g.fillStyle="#ffd34d"; g.fillRect(-5,-78,3,3); g.fillRect(3,-86,3,3); g.fillRect(-1,-72,2,2); return; }
+  if (id === "h_frost"){ g.fillStyle="#bfe6ff";
+    g.beginPath(); g.moveTo(-11,-64); g.lineTo(-11,-72); g.lineTo(-7,-80); g.lineTo(-4,-71); g.lineTo(0,-84);
+    g.lineTo(4,-71); g.lineTo(7,-80); g.lineTo(11,-72); g.lineTo(11,-64); g.closePath(); g.fill();
+    g.fillStyle="#ffffff"; g.fillRect(-9,-70,3,4); g.fillRect(-1,-76,2,6);
+    g.fillStyle="#5aa9e6"; g.fillRect(-2,-69,4,4); return; }
   if (id === "h_valk"){ g.fillStyle="#c9a227"; g.fillRect(-10,-74,20,11);
     g.fillStyle="#e0c04a";
     g.beginPath(); g.moveTo(-10,-74); g.lineTo(-20,-84); g.lineTo(-9,-79); g.closePath(); g.fill();
@@ -1746,10 +1788,14 @@ var PALETTES = [
   {sky:["#8f9bab","#dfe6ee"], ground:"#79838f", rock:"#5c6570", accent:"#c4302b"},
   {sky:["#3d2246","#8a4a6a"], ground:"#4a2f3d", rock:"#75566a", accent:"#ff8a3d"}
 ];
+/* a hand-built place can pin its own look instead of taking the dice */
+var RECIPE_LOOK = {
+  "Frostbite Peak": {weather:"snow", pal:{sky:["#8fb8de","#eaf4fb"], ground:"#e8f1f8", rock:"#8ea4b8", accent:"#5aa9e6"}}
+};
 function recipe(name, mode){
   var r = rng(hash(name));
   var pal = PALETTES[Math.floor(r()*PALETTES.length)];
-  return {
+  var rec = {
     name:name, mode:mode, pal:pal,
     length: 2200 + Math.floor(r()*2600),
     bots: 1 + Math.floor(r()*5),
@@ -1760,6 +1806,9 @@ function recipe(name, mode){
     shape: Math.floor(r()*4),
     seed: hash(name)
   };
+  var look = Object.prototype.hasOwnProperty.call(RECIPE_LOOK, name) ? RECIPE_LOOK[name] : null;
+  if (look){ for (var k in look) rec[k] = look[k]; }
+  return rec;
 }
 
 /* a little painted still of a place, used for the cards */
@@ -2248,6 +2297,7 @@ function portraitOn(g, cv, it){
   });
 }
 function wearIt(it){
+  checkCollections();
   if (it.kind === "hat")   S.wear.hat = (S.wear.hat === it.id ? null : it.id);
   if (it.kind === "event" && it.id === "e_horseman"){
     if (S.wear.hat === "e_horseman"){
@@ -2821,6 +2871,7 @@ function partySend(text){
   if (chatMode() === "safe" && !isSafeLine(text)) return false;
   Party.conn.send({t:"pm", by:S.name, text:text});
   partyLogPush({by:S.name, text:text, ts:Date.now(), me:true});
+  award("b_party");
   return true;
 }
 
@@ -3513,6 +3564,8 @@ function Wstage(W, x, y){
   W.parts.push(part(x + 4, y - 46, 26, 16, "#2f7d32", "deco"));
 }
 function Wcoin(W, x, y){ W.pickups.push({x:x, y:y, got:false}); }
+function Wice(W, x, y, w, h){ W.parts.push(part(x, y, w, h == null ? 18 : h, "#bfe6ff", "ice")); }
+function Wbounce(W, x, y, w){ W.parts.push(part(x, y, w, 16, "#7bd06f", "bounce")); }
 function Whouse(W, x, y, w, h, wall, roof, rooms){
   Wbg(W, x + 6, y + 8, w - 12, h - 8, "#e8dcc8");
   Wplat(W, x, y, w, 14, roof);                      /* roof */
@@ -3809,6 +3862,56 @@ var LAYOUTS = {
   W.survive = 75;
   W.hazard = {kind:"flood", t:0, level:60, next:3};
   W.obj = {kind:"climb"};
+},
+
+/* --- up a frozen mountain: slippery ice, drifting floes, falling icicles --- */
+"Frostbite Peak": function(W, pal, r){
+  Wground(W, -60, 380, pal.ground);
+  W.parts.unshift(part(-260, 250, 6000, 420, "#5aa9e6", "kill", {glow:"rgba(255,255,255,.5)"}));   /* freezing water */
+  Wstage(W, 120, 0);
+  var x = 400, y = -30, i;
+  /* the foothills: plain snowy steps */
+  for (i=0;i<4;i++){ Wplat(W, x, y, 100, 18, pal.rock); Wcoin(W, x + 50, y - 34); x += 175; y -= 30; }
+  Wstage(W, x - 125, y + 30);
+  /* the ice shelf: long slabs you slide right off */
+  for (i=0;i<3;i++){ Wice(W, x, y, 150); if (i === 1) Wcoin(W, x + 75, y - 34); x += 230; y += (i%2 ? -20 : 10); }
+  Wplat(W, x, y, 120, 18, pal.rock); Wstage(W, x + 60, y); x += 120;
+  /* drifting floes over open water, with a pad after each */
+  for (i=0;i<3;i++){
+    Wplat(W, x + 75, y, 90, 16, pal.accent, {mv:{axis:"x", amp:55, spd:1.1 + i*0.2, t:i*1.7, x0:0, y0:0}});
+    x += 240;
+    Wplat(W, x, y, 90, 18, pal.rock); Wcoin(W, x + 45, y - 34);
+    x += 90;
+  }
+  Wstage(W, x - 45, y);
+  /* the icicles: blades that drop over each ledge — go while they are up */
+  for (i=0;i<3;i++){
+    Wplat(W, x + 70, y - 20, 130, 18, pal.rock);
+    Wblade(W, x + 125, y - 150, 16, 70, 45, 1.6 + i*0.3, "y");
+    x += 200; y -= 20;
+  }
+  Wcoin(W, x - 110, y - 34);
+  Wstage(W, x - 65, y);
+  /* the snow bridge: it gives way a moment after you land */
+  for (i=0;i<5;i++){ Wcrumble(W, x + 70, y + (i%2 ? -25 : 0), 80, "#dfeaf3"); x += 150; }
+  Wplat(W, x + 70, y, 140, 18, pal.rock); Wstage(W, x + 140, y); x += 210;
+  /* the cliff: a trampoline, then a staircase of ledges to the top */
+  Wbounce(W, x + 60, y, 70);
+  Wplat(W, x + 160, y - 130, 120, 18, pal.rock);
+  x += 180; y -= 130;
+  for (i=0;i<5;i++){
+    x += 130; y -= 60;
+    Wplat(W, x, y, 90, 16, i%2 ? pal.accent : pal.rock);
+    if (i === 1 || i === 3) Wcoin(W, x + 45, y - 34);
+  }
+  x += 130; y -= 50;
+  Wplat(W, x, y, 260, 24, "#c9a227");
+  W.goal = {x:x + 170, y:y - 70, w:20, h:70};
+  W.w = x + 600;
+  W.spawn = {x:60, y:-PH-4};
+  W.lava = 620; W.camFloor = 190;
+  W.zones = [[20, 260]];
+  W.obj = {kind:"stages"};
 }
 };
 
@@ -4234,7 +4337,13 @@ var CHALLENGES = [
   {kind:"battle",  place:"Swordfights in the Sky",     text:"Win a round in Swordfights in the Sky"},
   {kind:"errand",  place:"Happy Home on the Hill",     text:"Bring BrickLady 5 coins in Happy Home on the Hill"},
   {kind:"bricks",  place:"Sunset Sandbox", n:15,       text:"Lay 15 bricks in one visit to Sunset Sandbox"},
-  {kind:"coins",   place:"Escape the Lava Temple", n:8, text:"Collect 8 coins in one run of Escape the Lava Temple"}
+  {kind:"coins",   place:"Escape the Lava Temple", n:8, text:"Collect 8 coins in one run of Escape the Lava Temple"},
+  {kind:"finish",  place:"Frostbite Peak",             text:"Reach the summit of Frostbite Peak"},
+  {kind:"coins",   place:"Frostbite Peak", n:6,        text:"Collect 6 coins in one climb of Frostbite Peak"},
+  {kind:"fast",    place:"Escape the Lava Temple", max:180, text:"Finish Escape the Lava Temple in under 3 minutes"},
+  {kind:"kos",     place:"Four Corners", n:5,          text:"Get 5 knockouts in one game of Four Corners"},
+  {kind:"battle",  place:"Rocket Arena",               text:"Win a round in Rocket Arena"},
+  {kind:"emote",   what:"cheer",                       text:"Do the cheer emote in any game (/e cheer)"}
 ];
 var CHALLENGE_REWARD = 30;
 function todaysChallenge(){ return CHALLENGES[hash("daily:" + today()) % CHALLENGES.length]; }
@@ -4250,6 +4359,8 @@ function challengeEvent(kind, n){
   if (ch.kind !== kind) return false;
   if (ch.place && G.rec.name !== ch.place) return false;
   if (ch.n && !(n >= ch.n)) return false;
+  if (ch.max && !(n <= ch.max)) return false;         /* a time to beat */
+  if (ch.what && n !== ch.what) return false;         /* a particular thing to do */
   st.done = true; give("tix", CHALLENGE_REWARD); award("b_daily"); saveSoon();
   toast("Daily challenge done \u2014 +" + CHALLENGE_REWARD + " Tickets", 3200);
   return true;
@@ -4292,6 +4403,12 @@ function banner(text){
 function emote(who, name){
   if (!who || EMOTES.indexOf(name) < 0) return false;
   who.emote = {n:name, t:3.2};
+  if (G && who === G.me){
+    if (!S.emotes) S.emotes = [];
+    if (S.emotes.indexOf(name) < 0){ S.emotes.push(name); saveSoon(); }
+    if (EMOTES.every(function(e){ return S.emotes.indexOf(e) >= 0; })) award("b_emotes");
+    challengeEvent("emote", name);
+  }
   return true;
 }
 function emoteCommand(v){
@@ -4342,7 +4459,7 @@ document.addEventListener("keydown", function(e){
       $("chatInput").value = "";
       $("chatBox").classList.remove("on");
       if (v){
-        if (/^\/(e|emote)(\s|$)/i.test(v) || /^\/(dance|wave|laugh|point|sit)$/i.test(v)) emoteCommand(v);
+        if (/^\/(e|emote)(\s|$)/i.test(v) || (v.charAt(0) === "/" && EMOTES.indexOf(v.slice(1).toLowerCase()) >= 0)) emoteCommand(v);
         else say(G.me, v.slice(0,90));
       }
     } else if (e.key === "Escape"){ $("chatBox").classList.remove("on"); }
@@ -5097,6 +5214,7 @@ function enterAs(acc, cb){
     }
     saveAccounts();
     award("b_welcome");
+    checkCollections();
     $("login").classList.remove("on");
     $("site").style.display = "";
     purse(); buildTabs(); go("home");
@@ -5418,7 +5536,20 @@ var THEME_PRESETS = [
     font:THEME_FONTS[5][0], hfont:THEME_FONTS[5][0], bevel:0, gloss:0, pattern:"grid"}),
   themeMerge(classicTheme(), {name:"High contrast", bg:"#ffffff", header:"#000000", headerBorder:"#000000", coin:"#000000", nav:"#000000", navText:"#ffffff", navHover:"#333333", navActive:"#ffff00", navActiveText:"#000000",
     page:"#ffffff", pageBorder:"#000000", panel:"#ffffff", panelBorder:"#000000", text:"#000000", muted:"#222222", heading:"#000000", link:"#0000ee", rule:"#b00000",
-    btn:"#ffffff", btnText:"#000000", go:"#000000", goText:"#ffff00", buy:"#000000", buyText:"#ffff00", danger:"#b00000", logo1:"#ffffff", logo2:"#ffff00", logoShadow:"#000000", bevel:0, gloss:0, font:THEME_FONTS[3][0], hfont:THEME_FONTS[3][0]})
+    btn:"#ffffff", btnText:"#000000", go:"#000000", goText:"#ffff00", buy:"#000000", buyText:"#ffff00", danger:"#b00000", logo1:"#ffffff", logo2:"#ffff00", logoShadow:"#000000", bevel:0, gloss:0, font:THEME_FONTS[3][0], hfont:THEME_FONTS[3][0]}),
+  themeMerge(classicTheme(), {name:"Ocean", bg:"#bfe3ee", header:"#0b5f7a", headerBorder:"#07445a", coin:"#07445a", nav:"#0e7490", navText:"#e0f7fb", navHover:"#1391b3", navActive:"#effafc", navActiveText:"#07445a",
+    page:"#effafc", pageBorder:"#7fb9c9", panel:"#ffffff", panelBorder:"#a9d3de", text:"#0d2a33", muted:"#45666f", heading:"#0b5f7a", link:"#0a6592", rule:"#e0533a",
+    btn:"#dff2f7", btnText:"#0d2a33", go:"#0e7a5f", buy:"#c98a1b", buyText:"#2a1a00", danger:"#c2413a", logo1:"#ffffff", logo2:"#ffd166", logoShadow:"#e0533a", radius:8, bevel:0, pattern:"dots"}),
+  themeMerge(classicTheme(), {name:"Arcade", bg:"#0b0620", header:"#1a0b3d", headerBorder:"#0b0620", headerText:"#ffffff", coin:"#0b0620", nav:"#150a33", navText:"#ff9bf5", navHover:"#2a1466", navActive:"#22104f", navActiveText:"#ffffff",
+    page:"#120a2b", pageBorder:"#5a2ca0", panel:"#1a1038", panelBorder:"#6b35c2", text:"#f3eaff", muted:"#b9a6dc", heading:"#7cf7ff", link:"#7cf7ff", rule:"#ff3fa4",
+    btn:"#2a1a55", btnText:"#f3eaff", go:"#007a58", goText:"#ffffff", buy:"#ffd23f", buyText:"#1a0b00", danger:"#c2185b", dangerText:"#ffffff", logo1:"#7cf7ff", logo2:"#ff3fa4", logoShadow:"#3b1a8f",
+    font:THEME_FONTS[1][0], hfont:THEME_FONTS[7][0], bevel:0, gloss:0, radius:4, pattern:"grid"}),
+  themeMerge(classicTheme(), {name:"Frost", bg:"#dde9f3", header:"#3c6e91", headerBorder:"#2a5070", coin:"#2a5070", nav:"#44779c", navText:"#f0f7fc", navHover:"#5e90b5", navActive:"#f4f9fd", navActiveText:"#2a5070",
+    page:"#f4f9fd", pageBorder:"#9fbcd3", panel:"#ffffff", panelBorder:"#c3d7e6", text:"#16283a", muted:"#4d6477", heading:"#2a5070", link:"#235d8c", rule:"#3f8fcf",
+    btn:"#e3eef6", btnText:"#16283a", go:"#2b7280", buy:"#b8860b", danger:"#b0413e", logo1:"#ffffff", logo2:"#bfe6ff", logoShadow:"#2a5070", radius:6, pattern:"dots"}),
+  themeMerge(classicTheme(), {name:"Lavender", bg:"#e6def5", header:"#6a4c9c", headerBorder:"#4b3375", coin:"#4b3375", nav:"#7757ad", navText:"#f5efff", navHover:"#8d70c2", navActive:"#faf7ff", navActiveText:"#4b3375",
+    page:"#faf7ff", pageBorder:"#bba9da", panel:"#ffffff", panelBorder:"#d6c9ec", text:"#2a1f3d", muted:"#65577d", heading:"#4b3375", link:"#6a3fb5", rule:"#d9577a",
+    btn:"#efe8fb", btnText:"#2a1f3d", go:"#4f7a2f", buy:"#b8860b", danger:"#b23a5e", logo1:"#ffffff", logo2:"#ffd9f0", logoShadow:"#d9577a", radius:10, bevel:0, pattern:"stripes"})
 ];
 
 function themePattern(p){
@@ -6462,7 +6593,9 @@ function update(dt){
     var secs = Math.round((G.runT || 0) * 10) / 10;
     var best = setRecord(G.rec.name, "time", secs, true);
     banner("Finished in " + fmtTime(secs) + (best ? " — a new best!" : "") + "  +" + pay + " Tickets");
+    if (secs > 0 && secs < 60) award("b_fast");
     placeDone("finish");
+    challengeEvent("fast", secs);
   }
 
   /* checkpoints */
@@ -6944,7 +7077,7 @@ function brickBody(g, p){
     }
   }
   if (p.t === "kill"){
-    g.fillStyle = "rgba(255,180,60,.45)";
+    g.fillStyle = p.glow || "rgba(255,180,60,.45)";
     for (var b=0;b<6;b++) g.fillRect(p.x + b*(p.w/6), p.y - 3 + Math.sin(G.t*4+b)*2, p.w/8, 5);
   }
   g.strokeStyle = "rgba(0,0,0,.3)"; g.lineWidth = 1;
